@@ -1,0 +1,4 @@
+node_modules/
+scenes/*/.scratch/
+scenes/_test/
+.DS_Store
