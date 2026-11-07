@@ -62,7 +62,7 @@ Use the `character-review` skill.
    - the camera's focus, drift and tour views.
 
    Also set the title and caption.
-3. Write `labels.js` with every tappable person and place and its line, quoted exactly.
+3. Write `labels.js` with every tappable person and place and its line, quoted exactly, and `window.STORY`: the day's chapters for the story panel (DESIGN.md 5b).
 4. Delete the example plug-ins and list the scene's own in the script tags.
 5. Copy `docs/BRIEF-TEMPLATE.md` to `scenes/<name>/BRIEF.md` and fill it in.
 6. Check with `tools/shot.mjs` that it renders: the land, the camera, the light at day, dusk and night, no errors. Check `groundY` at sample points with a script. Send the user a screenshot.

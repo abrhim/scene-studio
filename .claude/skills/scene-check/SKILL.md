@@ -22,6 +22,10 @@ node tools/shot.mjs "<url>" out.png [seconds to run] [width] [height]
 - `SHOT_EVAL="js"` runs a snippet in the page after it loads and prints the result. Use it to check `ctx.groundY(x, z)`, positions, or counts.
 - Look at every PNG with your image reader. Describe to yourself what's wrong before deciding it's right.
 
+## Real time
+
+`node tools/realtime.mjs "<url>" out- 4 4000` runs the page on its own clock and frames, as the TV does, and screenshots four frames back to back. `node tools/rteval.mjs "<url>" "<js>" 4000` evaluates something in a page that has been running in real time. Stepped shots start after everything has loaded, so they hide startup bugs. Compare the draw count in real time with a stepped shot: if they differ, something is drawn that shouldn't be (in the temple scene, placeholder blocks flickering against the temple and the sea). Do this check before every delivery, and whenever the family reports flicker.
+
 ## What to look at
 
 - **The automatic camera** at 0, 30, 60, 90, 120, 150 and 170 s. Is the heart of the scene framed? Is something gently moving everywhere?

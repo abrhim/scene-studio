@@ -35,10 +35,24 @@ What building Hobbiton, Rivendell, the character studies and the temple scene ta
 - Every Script must fill the cycle exactly (`holdTo(180)`), and the state at 179.9 s must match 0 s. Check the seam.
 - One big moment at a time (`ctx.events`), and nobody frozen: idle figures breathe, shift weight, glance and blink.
 
+## Integration
+
+- Builders working in parallel drift from the plan's timeline (people 5 s late, the flock 8 s late here). That's fine where nothing collides. The integrator re-times the camera's drift and the story panel to what actually happens.
+- **Depth is relative to the figure.** A child's legs are about 0.3 m, so "ankle-deep" water came up to their waist. Choose wading depths from each figure's own leg length, and check them close up.
+- Keep the steered camera out of buildings with `ctx.addCamFloor` (roofs, walls, towers), and let taps count the whole figure from face to feet, so they still work when zoomed in close.
+- Things that appear or vanish in view must fade, or walk out of sight first (into a gate, behind a wall), never pop.
+- When the family wants to explore, skip the video and spend the time on steering and taps.
+
 ## Tapping
 
 - People crowd, so a tap aims at faces (several points down from the head), people win over places, and tapping the same spot again steps to the next one. Labels follow their person and fade after 8 s.
 - A tap moment is a short gesture laid over the timeline with a smooth blend in and out. It never moves someone across the scene, adds anyone or changes the story.
+
+## Startup and flicker
+
+- **Start the frame loop only after the page's `load` event.** Plug-in scripts load after the base. A frame drawn before they arrive merges the static world too early (their scenery stays unmerged: 53 draws instead of 40) and leaves anything meant to be hidden showing. In the temple scene the base's see-through placeholder blocks stayed on screen, sitting exactly on the temple and the sea. The template now waits for `load`.
+- **Flicker only when the view moves means z-fighting:** two surfaces in the same place (a placeholder on a wall, a water sheet on the ground, two coplanar faces). Hide or remove one, or lift it a few centimetres.
+- **Headless shots with a stepped clock hide startup bugs**, because the clock starts after everything has loaded. After any change to startup or to what's visible, check in real time with `tools/realtime.mjs` (the page's own clock and frames) and compare the draw count with a stepped shot. If they differ, something is drawn that shouldn't be. The family saw this flicker on the TV and on a laptop; the stepped checks never did.
 
 ## Checking and delivery
 

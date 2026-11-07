@@ -40,6 +40,10 @@ What happens across the 180-second cycle: morning, day, dusk, night, dawn.
 
 Every tappable person and place goes in `labels.js` (kind, name, a short line with its source). List them here. Then list the tap moments: which taps set off a small gesture, and what it is (a few seconds, blending back; never control or spawning).
 
+## 5b. The story panel
+
+The loop's chapters for the panel at the top left (`window.STORY` in labels.js): a title, two plain sentences a child can follow, and the source, each with its window in cycle seconds. Chapters may overlap. Times are checked against the built scene during integration.
+
 ## 6. Characters
 
 A table: who, how they look (clothes, colours, the one distinctive shape), their routine through the cycle, their label. Animals too. Each one is approved on the character sheet before it goes in.

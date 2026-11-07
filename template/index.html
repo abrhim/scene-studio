@@ -22,6 +22,40 @@
   #home { position: fixed; left: 16px; top: 16px; width: 64px; height: 64px; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: rgba(255, 252, 244, 0.82); color: #2b2a26; box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3); z-index: 5; -webkit-tap-highlight-color: transparent; transition: transform 0.15s ease-out; }
   #home:active { transform: scale(0.94); }
   #home[hidden] { display: none; }
+  /* the story panel: the day's chapters at the top left, right of the home button (labels.js STORY) */
+  #story { position: fixed; left: 92px; top: 16px; width: min(392px, calc(100vw - 108px)); max-height: calc(100vh - 32px); z-index: 4; box-sizing: border-box; display: flex; flex-direction: column; padding: 12px 16px 12px; border-radius: 14px; background: rgba(40, 34, 30, 0.74); border: 1px solid rgba(240, 212, 138, 0.5); box-shadow: 0 2px 14px rgba(0, 0, 0, 0.35); color: #fdf6e2; font: 17px/1.3 Georgia, 'Palatino Linotype', serif; user-select: none; -webkit-user-select: none; touch-action: pan-y; -webkit-tap-highlight-color: transparent; }
+  #story[hidden] { display: none; }
+  #story .head { display: flex; align-items: center; gap: 10px; cursor: pointer; }
+  #story .head .t { flex: 1; font: 700 13px/1.25 Georgia, serif; color: #f0d48a; letter-spacing: 0.2em; text-transform: uppercase; text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5); }
+  #story .head .t small { display: block; font: italic 13px/1.25 Georgia, serif; color: #e6d6ac; letter-spacing: 0.02em; text-transform: none; margin-top: 2px; }
+  #story .fold { flex: none; width: 30px; height: 30px; padding: 0; border-radius: 50%; border: 1px solid rgba(240, 212, 138, 0.55); background: rgba(240, 212, 138, 0.08); color: #f0d48a; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: transform 0.4s ease; }
+  #story .fold svg { display: block; }
+  #story.closed .fold { transform: rotate(180deg); }
+  #story .bar { flex: none; height: 2px; margin: 8px 0 5px; background: rgba(240, 212, 138, 0.22); border-radius: 1px; overflow: hidden; }
+  #story .bar i { display: block; height: 100%; background: #f0d48a; transform-origin: 0 50%; transform: scaleX(0); }
+  #story ol { list-style: none; margin: 0; padding: 0; overflow-y: auto; overscroll-behavior: contain; min-height: 0; }
+  #story li { display: grid; grid-template-rows: 1fr; cursor: pointer; transition: grid-template-rows 0.6s ease, opacity 0.6s ease; }
+  #story li > div { overflow: hidden; min-height: 0; }
+  #story li .row { position: relative; padding: 2px 0 2px 24px; color: rgba(253, 246, 226, 0.5); transition: color 0.5s ease; }
+  #story li.past .row { color: rgba(253, 246, 226, 0.68); }
+  #story li.now .row { color: #fff3d2; }
+  #story li .title { display: block; font-size: 18px; line-height: 1.22; }
+  #story li .dot { position: absolute; left: 4px; top: 9px; width: 9px; height: 9px; border-radius: 50%; box-sizing: border-box; border: 1.5px solid rgba(240, 212, 138, 0.55); transition: background 0.5s ease, border-color 0.5s ease, box-shadow 0.5s ease; }
+  #story li.past .dot { background: rgba(240, 212, 138, 0.6); border-color: rgba(240, 212, 138, 0.6); }
+  #story li.now .dot { background: #ffe9a6; border-color: #ffe9a6; box-shadow: 0 0 8px 2px rgba(255, 225, 150, 0.55); }
+  #story li .more { display: grid; grid-template-rows: 0fr; opacity: 0; transition: grid-template-rows 0.6s ease, opacity 0.6s ease; }
+  #story li.open .more { grid-template-rows: 1fr; opacity: 1; }
+  #story li .more > div { overflow: hidden; min-height: 0; }
+  #story li .text { margin: 2px 0 0; font-size: 15px; line-height: 1.32; color: #f6ecd2; text-wrap: pretty; }
+  #story li .ref { margin: 3px 0 5px; font: italic 13px/1.28 Georgia, serif; color: #e6d6ac; text-wrap: pretty; }
+  #story.closed li:not(.lead) { grid-template-rows: 0fr; opacity: 0; pointer-events: none; }
+  @media (max-width: 899px) {
+    #story { padding: 10px 14px 10px; }
+    #story .head .t { font-size: 12px; letter-spacing: 0.14em; }
+    #story .head .t small .x { display: none; }
+    #story li .title { font-size: 17px; }
+    #story li .text { font-size: 15px; }
+  }
 </style>
 </head>
 <body>
@@ -30,6 +64,7 @@
 <a id="home" href="/" aria-label="Back to the hub" hidden><svg width="30" height="30" viewBox="0 0 256 256" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="20" stroke-linecap="round" stroke-linejoin="round" d="M152 208v-56a8 8 0 0 0-8-8h-32a8 8 0 0 0-8 8v56H48a8 8 0 0 1-8-8v-84.5a8 8 0 0 1 2.6-5.9l80-72.7a8 8 0 0 1 10.8 0l80 72.7a8 8 0 0 1 2.6 5.9V200a8 8 0 0 1-8 8Z"/></svg></a>
 <script>if (location.protocol !== 'file:') document.getElementById('home').hidden = false;</script>
 <div id="nametag"><div class="kind"></div><div class="n"></div><div class="r"></div><div class="t"></div><div class="tip"></div></div>
+<div id="story" hidden><div class="head"><div class="t">SCENE TITLE<small>Its source<span class="x"> · a day in three minutes</span></small></div><button class="fold" type="button" aria-label="Collapse the story"><svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" d="M5 15l7-7 7 7"/></svg></button></div><div class="bar"><i></i></div><ol></ol></div>
 <div id="blurb"><span></span><small></small></div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="kit/motion.js"></script>
@@ -595,6 +630,7 @@
     WATER, spots, light, cycle, wind, events, clock,
     addWind, addSkyFog, addLantern, lightLantern, lanterns, blob,
     addSurface: (f) => surfaces.push(f),
+    addCamFloor: (f) => camFloors.push(f),
     // People and animals: ctx.addName(name, () => headPosition, { kind, line, teach, onTap }). Places: ctx.addPlace(name,
     // () => position, { kind, line, teach, r, onTap }), where r is the radius of the glow on the ground. Or by the key of
     // an entry in labels.js: ctx.tag(key, getPos, { name, r, onTap }) (the entry says whether it's a person or a place).
@@ -676,7 +712,7 @@
       const mine = v(Math.sin(user.az) * Math.cos(user.el), Math.sin(user.el), Math.cos(user.az) * Math.cos(user.el)).multiplyScalar(user.dist).add(user.target);
       mine.x = Math.min(90, Math.max(-90, mine.x));
       mine.z = Math.min(100, Math.max(-70, mine.z));
-      mine.y = Math.max(mine.y, surfaceY(mine.x, mine.z) + 1.5, 0.8);
+      mine.y = Math.max(mine.y, camFloor(mine.x, mine.z), 0.8);
       const k = idle < USER_IDLE ? 0 : easeInOut(Math.min(1, (idle - USER_IDLE) / USER_EASE));
       camPos.lerpVectors(mine, camPos, k);
       camLook.lerpVectors(user.target, camLook, k);
@@ -684,6 +720,15 @@
     }
     camera.position.copy(camPos);
     camera.lookAt(camLook);
+  }
+
+  // The lowest the steered camera may go at (x, z): above the ground, and above anything a plug-in registers with
+  // ctx.addCamFloor(f) (f(x, z) returns a height there, or null): roofs, walls, towers, so a pinch never lands inside one.
+  const camFloors = [];
+  function camFloor(x, z) {
+    let h = surfaceY(x, z) + 1.5;
+    for (const f of camFloors) { const y = f(x, z); if (y !== null && y !== undefined) h = Math.max(h, y); }
+    return h;
   }
 
   // ---------- steering: drag to look around, pinch or scroll to zoom, two fingers (or right-drag) to slide, arrow keys
@@ -785,10 +830,14 @@
       if (!p) continue;
       let d = Infinity;
       if (c.person) {
-        // the label point is a little above the head, so aim below it
-        for (const [dy, extra] of [[0.2, 0], [0.45, 0], [0.9, 14], [1.4, 28]]) {
-          const sp = toScreen(proj.set(p.x, p.y - dy * (c.scale || 1), p.z));
-          if (sp) d = Math.min(d, Math.hypot(sp.x - x, sp.y - y) + extra);
+        // the whole figure counts, from the face down to the feet (a tap nearer the face wins ties), so a tap on the
+        // body works when the camera is in close
+        const s = c.scale || 1, a = toScreen(proj.set(p.x, p.y - 0.2 * s, p.z));
+        const b = toScreen(proj.set(p.x, p.y - 1.6 * s, p.z));
+        if (a && b) {
+          const ex = b.x - a.x, ey = b.y - a.y, len = Math.hypot(ex, ey) || 1;
+          const u = Math.max(0, Math.min(1, ((x - a.x) * ex + (y - a.y) * ey) / (len * len)));
+          d = Math.hypot(x - a.x - ex * u, y - a.y - ey * u) + 20 * u - Math.min(0.3 * len, 120);
         }
       } else {
         const sp = toScreen(p);
@@ -836,6 +885,61 @@
     tag.style.top = Math.max(150, sp.y) + 'px';
     tag.style.opacity = now > shownUntil - 0.5 ? 0 : 1;
   }
+
+  // ---------- the story panel (labels.js STORY): the day's chapters at the top left ----------
+  // Each chapter is marked past, happening now or still to come; the ones happening now open to show their two
+  // sentences and scripture (at most two, the most recently started). A thin line shows how far the day has gone.
+  // Tapping a chapter moves the clock to its start: everything is a function of the cycle time, so it all follows.
+  // The fold button keeps just the title and the current chapter (the default on narrow screens); ?toc=0 hides it.
+  const storyEl = document.getElementById('story');
+  const storyItems = [];
+  let storyKey = -1;
+  {
+    const chapters = Array.isArray(window.STORY) ? window.STORY : [];
+    const list = storyEl.querySelector('ol');
+    const jumpTo = (ch) => {
+      clock.elapsed = Math.floor(clock.elapsed / CYCLE) * CYCLE + ch.from;
+      events.active = null; events.until = 0;
+    };
+    for (const ch of chapters) {
+      const li = document.createElement('li');
+      li.className = 'future';
+      li.innerHTML = '<div><div class="row"><span class="dot"></span><span class="title"></span><div class="more"><div><p class="text"></p><p class="ref"></p></div></div></div></div>';
+      li.querySelector('.title').textContent = ch.title;
+      li.querySelector('.text').textContent = ch.text || '';
+      li.querySelector('.ref').textContent = ch.ref || '';
+      li.addEventListener('click', () => jumpTo(ch));
+      list.appendChild(li);
+      storyItems.push({ ch, li, state: '' });
+    }
+    const toggle = () => storyEl.classList.toggle('closed');
+    storyEl.querySelector('.fold').addEventListener('click', (e) => { e.stopPropagation(); toggle(); });
+    storyEl.querySelector('.head').addEventListener('click', toggle);
+    if (innerWidth < 900) storyEl.classList.add('closed');
+    storyEl.hidden = params.get('toc') === '0' || !chapters.length;
+  }
+  const storyBar = storyEl.querySelector('.bar i');
+  let storyBarK = -1;
+  function placeStory(t) {
+    if (storyEl.hidden) return;
+    const p = t % CYCLE;
+    const bk = Math.round(p / CYCLE * 800);
+    if (bk !== storyBarK) { storyBarK = bk; storyBar.style.transform = 'scaleX(' + (bk / 800).toFixed(4) + ')'; }
+    // one number says which chapters are past, now or to come and which two are open; nothing changes until it does
+    let key = 0, lead = null, second = null;
+    for (const it of storyItems) {
+      const c = it.ch, now = p >= c.from && p < c.to;
+      it.state = now ? 'now' : p >= c.to ? 'past' : 'future';
+      key = key * 3 + (now ? 2 : p >= c.to ? 1 : 0);
+      // the two open chapters: of those happening now, the two that started last (the list keeps its order)
+      if (now) { if (!lead || c.from >= lead.ch.from) { second = lead; lead = it; } else if (!second || c.from >= second.ch.from) second = it; }
+    }
+    key = key * 256 + (lead ? storyItems.indexOf(lead) + 1 : 0) * 16 + (second ? storyItems.indexOf(second) + 1 : 0);
+    if (key === storyKey) return;
+    storyKey = key;
+    for (const it of storyItems) it.li.className = it.state + (it === lead || it === second ? ' open' : '') + (it === lead ? ' lead' : '');
+  }
+  window.__story = { items: storyItems, el: storyEl };
 
   // ---------- the frame loop ----------
   const fpsEl = document.getElementById('fps'), blurbEl = document.getElementById('blurb');
@@ -910,6 +1014,7 @@
 
     renderer.render(scene, camera);
     placeTag();
+    placeStory(t);
 
     fpsFrames++;
     fpsTime += dt;
@@ -921,12 +1026,18 @@
   }
   if (CAPTURE) window.__capture = () => { frame(); return renderer.domElement.toDataURL('image/jpeg', 0.93); };
   window.__frame = frame;
+  // Start only once every plug-in's script has loaded and built: the first frame merges the static world, so a frame
+  // drawn earlier (any real network) leaves the plug-ins' scenery unmerged and anything meant to be hidden showing,
+  // flickering against what covers it. Headless checks step the clock after load and never see this.
+  let loaded = document.readyState === 'complete';
+  const start = () => { if (!CAPTURE && !document.hidden && rafId === null) { last = performance.now(); rafId = requestAnimationFrame(frame); } };
+  if (!loaded) addEventListener('load', () => { loaded = true; start(); });
   document.addEventListener('visibilitychange', () => {
     if (CAPTURE) return;
     if (document.hidden) { if (rafId !== null) cancelAnimationFrame(rafId); rafId = null; }
-    else if (rafId === null) { last = performance.now(); rafId = requestAnimationFrame(frame); }
+    else if (loaded) start();
   });
-  if (!CAPTURE && !document.hidden) rafId = requestAnimationFrame(frame);
+  if (loaded) start();
 })();
 </script>
 <!-- the scene's plug-ins, one file each -->

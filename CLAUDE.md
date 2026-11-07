@@ -17,7 +17,8 @@ What a viewer can do in a scene:
 1. Watch.
 2. Steer the camera: drag, pinch, slide, the arrow keys.
 3. Tap a person, animal, building or place to see a label (what it is, its name, a short line from the source).
-4. Set off a **small scripted moment** with a tap. Examples: a person waves, bows, points, sings, kneels or looks up; an animal leaps; a bird takes off; a door opens. It lasts a few seconds, blends back into the scene's timeline, and changes nothing else.
+4. Follow the day in the **story panel** at the top left: the chapters of the loop, what's happening now in two plain sentences with its source, and a tap on a chapter jumps the scene there.
+5. Set off a **small scripted moment** with a tap. Examples: a person waves, bows, points, sings, kneels or looks up; an animal leaps; a bird takes off; a door opens. It lasts a few seconds, blends back into the scene's timeline, and changes nothing else.
 
 That is the whole list.
 
@@ -64,7 +65,7 @@ Follow these phases in order. Each one ends at a **gate**: the user approves bef
 5. **The base.** Copy `template/` and `kit/` into `scenes/<name>/` and write:
    - the land, the spots and every shared measurement;
    - the palette, the cycle and the camera;
-   - `labels.js`.
+   - `labels.js`, with every label and the story panel's chapters (`window.STORY`).
 
    Check it renders. Send a screenshot.
 6. **Builders, in parallel.** Split the scene into plug-in files (buildings, land and water, people, animals; whatever this scene needs). Give each file to a subagent with a brief built from [docs/BRIEF-TEMPLATE.md](docs/BRIEF-TEMPLATE.md). Run them at the same time.
@@ -159,6 +160,7 @@ Never ask the user to check something you can check yourself.
 - `node tools/shot.mjs "<url>" out.png [seconds]` takes a screenshot at TV size with the clock stepped exactly, and prints draws, triangles and errors. Look at every screenshot.
 - `?t0=` picks the moment, `?time=day|dusk|night` holds the light, `?cam=x,y,z,tx,ty,tz` pins the camera, `?only=a,b` loads only some plug-ins, and `?tour=1` runs the tour.
 - For motion, take strips of shots a few tenths of a second apart.
+- **Also check in real time** with `node tools/realtime.mjs "<url>" out- 4 4000`: the page's own clock and frames, as on the TV. Stepped shots start after everything has loaded and hide startup bugs; if the draw count differs from a stepped shot, something is showing that shouldn't be. Flicker that only appears when the view moves is two surfaces in the same place.
 - `node tools/record.mjs "<url>?t0=0" frames/ 5400` records the whole loop, and `sh tools/encode.sh frames out.mp4` turns it into a video.
 
 ## Where things are
@@ -171,7 +173,7 @@ docs/DESIGN-TEMPLATE.md the design document every scene starts from
 docs/BRIEF-TEMPLATE.md  the common brief every builder subagent gets
 kit/                    figures.js (the rig, poses, scripts), blocky.js (the figures), motion.js (walks and life)
 template/               the base scene (index.html), example plug-ins, labels.js, the character sheet
-tools/                  shot.mjs, record.mjs, encode.sh
+tools/                  shot.mjs (stepped clock), realtime.mjs and rteval.mjs (real time), frames.mjs, record.mjs, encode.sh
 scenes/<name>/          each scene: a standalone folder with its own copy of the kit. Open index.html, or serve it.
 .claude/agents/         the subagents
 .claude/skills/         new-scene, character-review, scene-check

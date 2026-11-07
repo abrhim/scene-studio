@@ -20,7 +20,7 @@ To look at a finished scene, open `scenes/<name>/index.html`, or run `npm run se
 - `docs/`: the style, the lessons, and templates for the design and for builders' briefs.
 - `kit/`: the figure kit, the blocky figures and the shared motion.
 - `template/`: the base scene, example plug-ins and the character sheet.
-- `tools/`: headless screenshots and frame-by-frame video.
+- `tools/`: headless screenshots (stepped and real time) and frame-by-frame video.
 - `.claude/agents/`: researcher, character artist, set builder, land builder, choreographer, integrator, reviewer.
 - `.claude/skills/`: new-scene, character-review, scene-check.
 
