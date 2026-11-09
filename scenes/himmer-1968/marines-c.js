@@ -34,8 +34,8 @@
 //   7  1500   pinned in craters and grass; Cahill walks to the LZ 8-80, hit at 22, 38 and 56 (Injured Walk from 40); the
 //             withdrawal order from his radioman 95-110 (arc at 97.3); Sgt Rider round the west flank 12-45; Panykaninec at
 //             the big crater's rim, hit 50.5; Hatcher down 31.3; Hunnicutt rises at 69.5 and is hit at 71.2, Sitting Idle;
-//             from 99 two stretchers (two men and the carried) toward the LZ
-//   8  1900   dusk: a file of 25 with four stretchers and a walking wounded goes down the withdrawal lane, fading out past
+//             two poncho litters (two bearers at the ends, two relief men) toward the LZ, from 87 and 98
+//   8  1900   dusk: a file of 30 with four poncho litters and a walking wounded, about 3 m apart, goes down the withdrawal lane, fading out past
 //             the LZ by 87; Hunnicutt leaves his crater, Low Crawl 9-50 to Himmer, kneels 50.5 and stays
 //   9  0100   Himmer still, breathing; Hunnicutt beside him low; prone at 12.3 and 35.3 facing the slit; his shots (fire.js)
 //             at 14.5, 15.3, 38.0, 38.6, 80.5; the grenade leaves his hand at 40.8 (burst 42.0); crouched again from 90
@@ -139,6 +139,10 @@
       CM.clips['C:Carry Walk'] = clip;
     }
     const CW = 'C:Carry Walk';
+    // a poncho litter's bearers: Walk With Rifle with the rifle slung; the near hand is laid on the poncho by IK
+    // (clay-v3/motion.js CM.grip), so no carrying clip is needed (fix pass, carries)
+    const LW = 'C:Litter Walk'; CM.slung('Walk With Rifle', LW);
+    const LI = 'C:Litter Idle'; CM.slung('Rifle Idle', LI);
     const DUR = (n) => CM.clips[n].duration;
 
     // ---------- calibration on a probe figure (not in the scene) ----------
@@ -163,6 +167,7 @@
         VNAT[n] = 1.1 * (mx - mn) / (0.6 * d) / f.scale;
       }
       for (const n in VNAT) if (!(VNAT[n] > 0.15)) VNAT[n] = n === 'Low Crawl' ? 0.35 : 1.1;
+      VNAT[LW] = VNAT['Walk With Rifle'];
       // the grenade leaves the hand where the right hand moves fastest
       f.mixer.stopAllAction(); f.cur = null; f.x = 0; f.z = 0; f.yaw = 0;
       CM.play(f, 'Grenade Throw', { fade: 0, time: 0 });
@@ -265,6 +270,7 @@
     const P2 = ['pc2', 'sl3', 'hunnicutt', 'rider', 'panykaninec', 'brown'].concat(Array.from({ length: 15 }, (_, i) => 'r' + (16 + i)));
     const HQ = ['himmer', 'rtoH', 'connelly', 'corpsman', 'cahill', 'rtoC', 'r31', 'r32'];
     const COLUMN = P1.slice(0, 11).concat(HQ, P1.slice(11), P2);   // file order on the march: HQ behind the lead squads
+    const RANK_P2 = Math.floor(COLUMN.indexOf(P2[0]) / 2);   // the first rank of the second platoon
     const fig = {};
     const figs = [];
     const fadeMats = [];
@@ -318,7 +324,7 @@
       else if (this.t < L) { if (last.k === 'hold') last.t1 = L; else this.hold(L, holdAfter(last.clip)); }
       this.L = L; return this;
     };
-    const holdAfter = (clip) => (clip === 'Low Crawl' ? 'Prone Idle' : clip === 'Injured Walk' ? 'Injured Idle' : clip === CW ? 'Carrying' : 'Rifle Idle');
+    const holdAfter = (clip) => (clip === 'Low Crawl' ? 'Prone Idle' : clip === 'Injured Walk' ? 'Injured Idle' : clip === CW ? 'Carrying' : clip === LW ? LI : 'Rifle Idle');
     const NOPE = { hidden: true };
 
     // idle clips by kind: who has a rifle
@@ -399,7 +405,8 @@
     function ch4Plan(key) {
       const L = 90, R = RES[key];
       const i = COLUMN.indexOf(key), rank = Math.floor(i / 2), file = i % 2 ? 1.25 : -1.25;
-      const sF = 4 + (24 - rank) * 1.35;               // the lead rank furthest down the slope
+      // fix pass, spacing: two files, 2.8 m man to man in each (+-0.6; was 1.35), 10 m between the platoons
+      const sF = 4 + (24 - rank) * 2.8 + (rank < RANK_P2 ? 10 : 0) + (H(i, 7) - 0.5) * 1.2;   // the lead rank furthest down the slope
       const formPts = slice(RC, 0, sF, file);
       const start = R.at;
       const p = new Plan(start, R.yaw);
@@ -434,9 +441,11 @@
     const DRINK = ['r3', 'r9', 'r18', 'r24'];
     function ch5Plan(key) {
       const L = 120, i = COLUMN.indexOf(key), rank = Math.floor(i / 2), file = i % 2 ? 1.1 : -1.1;
-      const v = 1.2, gap = 1.5;
+      // fix pass, spacing: two files, 3.0 m man to man in each (+-0.6; was 1.5), 10 m between the platoons; the lead
+      // rank leaves the lane at t 15 (was 50) so the last, 82 m back, is off it by about 83 and down by about 98
+      const v = 1.2, gap = 3.0;
       const sC = sJoin;
-      const s0 = sC - 50 * v - rank * gap;   // the lead rank leaves the lane at t 50, the last at about 80
+      const s0 = sC - 15 * v - rank * gap - (rank >= RANK_P2 ? 10 : 0) - (H(i, 8) - 0.5) * 1.2;
       const spot = HALT[key];
       const p = new Plan(polyAt(RC, s0, [0, 0]), 0);
       p.yaw = Math.atan2(...(() => { const a = polyAt(RC, s0, [0, 0]), b = polyAt(RC, s0 + 1, [0, 0]); return [b[0] - a[0], b[1] - a[1]]; })());
@@ -578,33 +587,65 @@
     // ---- chapter 7: pinned; Cahill to the LZ; the withdrawal order; carrying out the wounded ----
     const czlz = xz(S.czlz);
     const STRETCH7 = [{ a: 'r13', b: 'r14', w: 'sl3', t: 99.5 }, { a: 'r15', b: 'r22', w: 'brown', t: 101.5 }];
-    // A stretcher: two bearers and the carried man (no carry clip exists: the bearers walk Carry Walk, the carried man
-    // lies in Laying Breathless lifted to their hands, along the same stretch of a base path, so all three keep step).
-    // spec: { base (Poly), s0, s1 (the carried man's hips along base), tLift (< 0: already carried at t 0), until,
-    //   w: { key, at, yaw }, a / b: { key, at, yaw, clip } (front / rear), v }
-    const FRONT = 1.1, REAR = -0.8;
-    function stretcher(spec, plans) {
+    // A poncho litter (fix pass, carries): two bearers at the ends, the front man with his hands behind him on the
+    // front corners, the rear man with his in front of him on the rear corners, at hip height (CM.grip), rifles slung;
+    // two relief bearers walk ahead and behind. Side-by-side bearers were tried first: on the lane's steep cross-slopes
+    // (up to 1.2 m over a metre) the poncho stood on edge. The wounded man lies in the sag (Laying Breathless, rifle gone).
+    // All five ride one base path: each frame the bearers stand at fixed offsets from the litter's centre (litterPlace),
+    // so the poncho never stretches; the bearers walk in step (one phase, one stride) at 0.8 of the file's pace.
+    // spec: { base (Poly), s0, s1 (the litter's centre along base), tLift (< 0: already carried at t 0), until, L, v,
+    //   w: { key, at, yaw }, bearers: [{ key, at, yaw, clip }] (front, relief, rear, relief) }
+    const SLOTS = [[1.2, 0], [3.4, 0.15], [-1.2, 0], [-3.4, -0.15]];   // [along, right of the line]: front, relief, rear, relief
+    const LITTERS = {};
+    function stretcher(spec, plans, ch) {
       const { base, s0, s1, tLift, until, v } = spec;
       const dirAt = (s) => { const a = polyAt(base, s, [0, 0]), b = polyAt(base, s + 1, [0, 0]); return Math.atan2(b[0] - a[0], b[1] - a[1]); };
       const d0 = dirAt(s0), yawOff = Math.PI - headYaw;   // head to the rear
+      const off = (s, al, lt) => { const p = polyAt(base, s + al, [0, 0]), y = dirAt(s + al); return [p[0] - Math.cos(y) * lt, p[1] + Math.sin(y) * lt]; };
+      const lit = { base, s0, s1, tLift, w: spec.w.key, bearers: [], yawOff, ch };
       const pw = new Plan(tLift >= 0 ? spec.w.at : polyAt(base, s0, [0, 0]), tLift >= 0 ? spec.w.yaw : d0 + yawOff);
       if (tLift >= 0) {
         pw.hold(tLift, 'Laying Breathless', { lie: true, down: true });
-        pw.go('Laying Breathless', [polyAt(base, s0, [0, 0])], 1, { until: tLift + 1.5, face: d0 + yawOff, lie: true, carried: true, lift: { a: 0, b: 0.78, t0: tLift, t1: tLift + 1.4 } });
-        if (pw.segs[pw.segs.length - 1].k !== 'move') pw.hold(tLift + 1.5, 'Laying Breathless', { face: d0 + yawOff, lie: true, carried: true, turn: 1.4, lift: { a: 0, b: 0.78, t0: tLift, t1: tLift + 1.4 } });
+        pw.go('Laying Breathless', [polyAt(base, s0, [0, 0])], 1, { until: tLift + 2.2, face: d0 + yawOff, lie: true, carried: true, turn: 1.4 });
       }
-      pw.go('Laying Breathless', slice(base, s0, s1, 0).slice(1), v, { lie: true, carried: true, lift: 0.78, yawOff, ramp: tLift >= 0 ? 1.0 : 0.01, until });
+      pw.go('Laying Breathless', slice(base, s0, s1, 0).slice(1), v, { lie: true, carried: true, yawOff, ramp: tLift >= 0 ? 1.2 : 0.01, until });
+      lit.carry = pw.segs[pw.segs.length - 1];
       plans[spec.w.key] = pw.end(spec.L);
-      for (const [B, d] of [[spec.a, FRONT], [spec.b, REAR]]) {
-        const pb = new Plan(tLift >= 0 ? B.at : polyAt(base, s0 + d, [0, 0]), tLift >= 0 ? B.yaw : d0);
+      plans[spec.w.key].lit = lit;
+      const ph = H(s0 * 7, 3), vn = VNAT['Walk With Rifle'] * 1.0;
+      spec.bearers.forEach((B, j) => {
+        const [al, lt] = SLOTS[j];
+        const pb = new Plan(tLift >= 0 ? B.at : off(s0, al, lt), tLift >= 0 ? B.yaw : d0);
         if (tLift >= 0) {
           pb.hold(tLift - 7, B.clip || 'Prone Idle');
-          pb.go('Rifle Crouch Walk', [polyAt(base, s0 + d, [0, 0])], 1.2, { until: tLift - 0.4 });
-          pb.hold(tLift + 1.5, 'Carrying', { face: d0, fade: 0.5 });
+          pb.go('Rifle Crouch Walk', [off(s0, al, lt)], 1.2, { until: tLift - 0.6 });
+          pb.hold(tLift + 0.4, 'Idle Crouching', { face: d0, fade: 0.5 }).hold(tLift + 2.2, LI, { face: d0, fade: 0.8 });
         }
-        pb.go(CW, slice(base, s0 + d, s1 + d, 0).slice(1), v, { ramp: tLift >= 0 ? 1.0 : 0.01, until });
+        pb.go(LW, slice(base, s0 + al, s1 + al, lt).slice(1), v, { ramp: tLift >= 0 ? 1.2 : 0.01, until, ph, vn });
         plans[B.key] = pb.end(spec.L);
+        plans[B.key].lit = lit;
+        lit.bearers.push({ key: B.key, al, lt });
+      });
+      (LITTERS[ch] = LITTERS[ch] || []).push(lit);
+    }
+    // where a litter's centre is at t (along its base path), and each of its men stands: overrides E for that man
+    const _lc = [0, 0], _ld = [0, 0];
+    function litterS(lit, t) { const c = lit.carry; if (t <= c.t0) return lit.s0; return lit.s0 + trap(c, Math.min(t, c.t1) - c.t0); }
+    function litterPlace(lit, key, t, seg) {
+      const s = litterS(lit, t);
+      polyAt(lit.base, s, _lc); polyAt(lit.base, Math.min(lit.base.D, s + 0.9), _ld);
+      const y = Math.atan2(_ld[0] - _lc[0], _ld[1] - _lc[1]);
+      const fx = Math.sin(y), fz = Math.cos(y), lx = Math.cos(y), lz = -Math.sin(y);   // forward; left of the line = -(lx, lz)
+      if (key === lit.w) {
+        if (t < lit.tLift) return;
+        // his hips a little forward of the centre: the poncho's middle is under his trunk
+        const k = lit.tLift >= 0 ? sm((t - lit.tLift) / 1.6) : 1;
+        E.x += (_lc[0] + fx * 0.12 - E.x) * k; E.z += (_lc[1] + fz * 0.12 - E.z) * k; E.yaw = lerpA(E.yaw, y + lit.yawOff, k);
+        return;
       }
+      if (seg.clip !== LW && seg.clip !== LI) return;
+      const B = lit.bearers.find((q) => q.key === key);
+      E.x = _lc[0] + fx * B.al - lx * B.lt; E.z = _lc[1] + fz * B.al - lz * B.lt; E.yaw = y;
     }
     function ch7Plans() {
       const L = 120, plans = {};
@@ -665,11 +706,19 @@
         plans[k] = p.end(L);
       }
       // the stretchers from about 99, as the medevacs come in (medevac.js 86-120)
+      // four bearers each (fix pass, carries): the two named, and the two nearest riflemen still up who have no other
+      // part in the chapter; the litter walks at the bearers' pace (0.72 m/s) and starts early enough to reach the LZ
+      const busy = new Set(SIX.concat(['rider', 'r20', 'r21', 'r0', 'r2'], STRETCH7.flatMap((q) => [q.a, q.b, q.w])));
       for (const S7 of STRETCH7) {
         const w = E(S7.w), back = toward(w.at, AS(-30, -7), -3);
         const base = Poly([back, w.at, AS(-30, -7), toward(czlz, AS(-30, -7), 10)]);
         const bear = (k) => { const e = E(k); return { key: k, at: e.at, yaw: e.yaw, clip: e.clip }; };
-        stretcher({ base, s0: 3, s1: base.D - 1, tLift: S7.t, until: L, v: 0.85, L, w: { key: S7.w, at: w.at, yaw: w.yaw }, a: bear(S7.a), b: bear(S7.b) }, plans);
+        const pool = CAST.map((c) => c.key).filter((k) => /^r\d+$/.test(k) && L6[k] && !L6[k].lie && !FALL[k] && !busy.has(k))
+          .sort((p, q) => Math.hypot(L6[p].at[0] - w.at[0], L6[p].at[1] - w.at[1]) - Math.hypot(L6[q].at[0] - w.at[0], L6[q].at[1] - w.at[1]));
+        const extra = pool.slice(0, 2); extra.forEach((k) => busy.add(k));
+        const v = 0.72, tLift = Math.min(S7.t, L - 2.2 - 1.2 - (base.D - 4) / v - 1);
+        S7.tLift = tLift; S7.D = base.D;
+        stretcher({ base, s0: 3, s1: base.D - 1, tLift, until: tLift + 2.2 + 1.2 + (base.D - 4) / v, v, L, w: { key: S7.w, at: w.at, yaw: w.yaw }, bearers: [S7.a, extra[0], S7.b, extra[1]].filter(Boolean).map(bear) }, plans, 7);
       }
       return plans;
     }
@@ -686,17 +735,27 @@
       const lead = [AS(-12, 1), AS(-28, -6)];
       const RWp = Poly(lead.concat([czlz]).concat(RW.pts.slice(1)));
       const czS = Poly(lead.concat([czlz])).D;
-      const FILE = ['r5', 'r6', ['r13', 'sl3', 'r14'], 'r7', 'hatcher', 'r8', ['r15', 'brown', 'r22'], 'r9', 'connelly', 'rtoH', ['r23', 'psgt', 'r24'], 'r10', 'r11', 'corpsman', ['r25', 'pc1', 'r26'], 'r12', 'sl2', 'r0', 'r1', 'r2', 'r3', 'r4'];
-      const v = 0.98, gap = 2.9, sHead = czS + 25;
-      const fadeAt = czS + 44;
+      // the file (fix pass, spacing and carries): about 3 m man to man (2.4-3.6), a litter and its two relief men taking 6.8 m with
+      // a man's gap before and after; four bearers to a litter (the two of chapter 7 and two more); the whole file at
+      // the litters' pace, 0.78 m/s; started far enough down the lane that its tail fades out past the LZ by about 88
+      const FILE = ['r5', ['r13', 'sl3', 'r14', 'r6', 'r7'], 'hatcher', 'r8', ['r15', 'brown', 'r22', 'r9', 'r10'], 'connelly', 'rtoH',
+        ['r23', 'psgt', 'r24', 'r11', 'r12'], 'corpsman', 'r0', ['r25', 'pc1', 'r26', 'r1', 'r2'], 'sl2', 'r3', 'r4'];
+      const v = 0.78, fadeAt = czS + 44;
       const fadeOut = (o, t, s) => 1 - sm((s - fadeAt) / 6);
+      const hr = (k) => H(k * 13 + 5, 9);
+      const slots = []; let sAcc = 0;
+      FILE.forEach((item, u) => {
+        if (u > 0) sAcc += Array.isArray(item) || Array.isArray(FILE[u - 1]) ? 3.4 + 2.8 : 2.4 + hr(u) * 1.2;   // a litter with its relief men is 6.8 m long
+        slots.push(sAcc);
+      });
+      const sHead = fadeAt + 6 - v * 88 + sAcc;   // the last slot reaches the end of the fade at t 88
       let u = 0;
       const stretchers = [];
       for (const item of FILE) {
-        const s0 = sHead - u * gap; u++;
-        if (Array.isArray(item)) { stretchers.push({ a: item[0], w: item[1], b: item[2], s0 }); continue; }
+        const s0 = sHead - slots[u]; u++;
+        if (Array.isArray(item)) { stretchers.push({ w: item[1], by: [item[0], item[3], item[2], item[4]], s0 }); continue; }
         const k = item, p = new Plan(polyAt(RWp, s0, [0, 0]), 0);
-        const pts = slice(RWp, s0, s0 + v * L + 4, (u % 2 ? 0.5 : -0.5));
+        const pts = slice(RWp, s0, s0 + v * L + 4, (u % 2 ? 0.25 : -0.25));
         p.x = pts[0][0]; p.z = pts[0][1];
         { const b = pts[1]; p.yaw = Math.atan2(b[0] - p.x, b[1] - p.z); }
         const clip = k === 'hatcher' ? 'Injured Walk' : 'Walk With Rifle';
@@ -705,8 +764,8 @@
         plans[k] = p.end(L);
       }
       for (const s of stretchers) {
-        stretcher({ base: RWp, s0: s.s0, s1: s.s0 + v * L + 4, tLift: -1, until: L, v, L, w: { key: s.w }, a: { key: s.a }, b: { key: s.b } }, plans);
-        for (const k of [s.a, s.b, s.w]) plans[k].sFade = { P: RWp, s0: s.s0, v };
+        stretcher({ base: RWp, s0: s.s0, s1: s.s0 + v * L + 4, tLift: -1, until: L, v, L, w: { key: s.w }, bearers: s.by.map((k) => ({ key: k })) }, plans, 8);
+        for (const k of s.by.concat([s.w])) plans[k].sFade = { P: RWp, s0: s.s0, v };
       }
       for (const k in plans) if (plans[k].sFade) plans[k].alphaFn = (t) => fadeOut(null, t, plans[k].sFade.s0 + plans[k].sFade.v * t);
       // Hunnicutt: from his crater, a low crawl across the slope to Himmer; he kneels and stays (NC)
@@ -845,7 +904,7 @@
     function findSeg(p, t) { const s = p.segs; for (let i = 0; i < s.length; i++) if (t < s[i].t1) return i; return s.length - 1; }
     function clipTime(o, seg, t) {
       const clip = CM.clips[seg.clip], d = clip.duration, ud = clip.userData;
-      if (seg.k === 'move' && (ud.cfg.mode === 'plant' || seg.clip === 'Low Crawl')) return (o.f.v.phase * d + E.s / vnat(o, seg.clip)) % d;
+      if (seg.k === 'move' && (ud.cfg.mode === 'plant' || seg.clip === 'Low Crawl')) return ((seg.ph !== undefined ? seg.ph : o.f.v.phase) * d + E.s / (seg.vn || vnat(o, seg.clip))) % d;
       if (seg.k === 'move') return (o.f.v.phase * d + (t - seg.t0)) % d;
       if (ud.cfg.mode === 'once') return Math.min(t - seg.t0 + (seg.time || 0), d - 0.02);
       return ((seg.time !== undefined ? seg.time : o.f.v.phase * d) + (t - seg.t0)) % d;
@@ -933,26 +992,50 @@
       for (const k in RADIOS) if (m.radios[k] !== RADIOS[k]) m.radios[k] = RADIOS[k];
     }
     installRadios();
-    window.MARINES_C = { figures: fig, radios: RADIOS, plansFor, calib: { VNAT, RELEASE, HEAD_LAY } };
+    window.MARINES_C = { figures: fig, radios: RADIOS, plansFor, litters: LITTERS, ground, RC, calib: { VNAT, RELEASE, HEAD_LAY } };
 
-    // ---------- litters (integration): two poles and a poncho under each carried man, between his bearers ----------
-    const LIT = (() => {
-      const parts = [];
-      const poncho = new THREE.BoxGeometry(0.66, 0.035, 1.9); parts.push([poncho, 0x4f5a3c]);
-      for (const sx of [-0.36, 0.36]) { const g = new THREE.CylinderGeometry(0.024, 0.024, 2.5, 5); g.rotateX(Math.PI / 2); g.translate(sx, 0.01, 0); parts.push([g, 0x6b5a3e]); }
-      const pos = [], col = [];
-      for (const [g, c] of parts) { const ng = g.toNonIndexed(), cc = ctx.lin(c), a = ng.attributes.position.array; for (let i = 0; i < a.length; i += 3) { pos.push(a[i], a[i + 1], a[i + 2]); col.push(cc.r, cc.g, cc.b); } }
-      const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3)); geo.computeVertexNormals();
-      const m = new THREE.InstancedMesh(geo, new THREE.MeshStandardMaterial({ vertexColors: true, flatShading: true, roughness: 0.95 }), 8);
-      m.count = 0; m.frustumCulled = false; m.instanceMatrix.setUsage(THREE.DynamicDrawUsage); ctx.scene.add(m);
-      return { m, n: 0, M: new THREE.Matrix4(), q: new THREE.Quaternion(), p: new THREE.Vector3(), s: new THREE.Vector3(1, 1, 1), h: new THREE.Vector3(), d: new THREE.Vector3(), e: new THREE.Euler() };
-    })();
-    function litterUnder(o, lift) {
-      if (LIT.n >= 8) return;
-      const f = o.f; f.b.mixamorigHips.getWorldPosition(LIT.h); LIT.d.copy(o.head).sub(LIT.h); LIT.d.y = 0;
-      const yaw = Math.atan2(LIT.d.x, LIT.d.z);
-      LIT.p.set(LIT.h.x + LIT.d.x * 0.25, Math.max(ground(f.x, f.z) + lift - 0.2, LIT.h.y - 0.14), LIT.h.z + LIT.d.z * 0.25);
-      LIT.m.setMatrixAt(LIT.n++, LIT.M.compose(LIT.p, LIT.q.setFromEuler(LIT.e.set(0, yaw, 0)), LIT.s));
+    // ---------- litters (fix pass, carries): a sagging poncho between the four bearers' near hands ----------
+    const PONS = []; for (let i = 0; i < 6; i++) PONS.push(CM.poncho(ctx.scene, ctx.lin(0x4a5536)));
+    const _h = new THREE.Vector3(), _sh = new THREE.Vector3(), _t = [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()];
+    const _c = [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()], _fw = new THREE.Vector3();
+    function litterFrame(lit, t, k) {
+      const W = fig[lit.w];
+      if (!W || !W.F.root.visible || lit.bearers.length < 3) return false;
+      const Fr = fig[lit.bearers[0].key], Rr = fig[lit.bearers[2].key];
+      if (!Fr.F.root.visible || !Rr.F.root.visible) return false;
+      const lifted = lit.tLift < 0 ? 1 : sm((t - lit.tLift - 0.4) / 1.6);
+      const s = litterS(lit, t); polyAt(lit.base, s, tmp2); polyAt(lit.base, Math.min(lit.base.D, s + 0.9), tmp3);
+      const yaw = Math.atan2(tmp3[0] - tmp2[0], tmp3[1] - tmp2[1]); _fw.set(Math.sin(yaw), 0, Math.cos(yaw));
+      const rx = -Math.cos(yaw), rz = Math.sin(yaw);   // his right
+      const bob = 0.012 * Math.sin(t * 2 * Math.PI * 1.7);
+      // each end man's two grips: behind him (front man) or before him (rear man), a shoulder-width apart, at the
+      // height his hanging arm reaches (on the ground before the lift)
+      [[Fr, -0.3, 0], [Rr, 0.34, 2]].forEach(([o, fwd, j]) => {
+        const f = o.f; let arm = 0, sy = 0;
+        for (const sd of ['Left', 'Right']) {
+          f.b['mixamorig' + sd + 'Arm'].getWorldPosition(_sh); sy += _sh.y / 2;
+          arm += (_sh.distanceTo(f.b['mixamorig' + sd + 'ForeArm'].getWorldPosition(_h)) + _h.distanceTo(f.b['mixamorig' + sd + 'Hand'].getWorldPosition(_c[3])) + 0.07 * f.scale) / 2;
+        }
+        const r0 = o.F.root.position, gy0 = ground(r0.x, r0.z);
+        const y = (gy0 + 0.1) + ((sy - arm * 0.88) - (gy0 + 0.1)) * lifted + bob;
+        for (const [sd, sg] of [['Left', 1], ['Right', -1]]) {
+          const v = _t[j + (sd === 'Left' ? 0 : 1)];
+          v.set(r0.x + _fw.x * fwd + rx * sg * 0.24 * -1, Math.max(y, sy - arm * 0.97), r0.z + _fw.z * fwd + rz * sg * 0.24 * -1);
+        }
+        CM.grip(f, _t[j], _t[j + 1], { lean: (fwd > 0 ? 0.14 : 0.06) * lifted });
+      });
+      // corners: front-left, front-right (the front man's hands), rear-right, rear-left (the rear man's)
+      _c[0].copy(_t[0]); _c[1].copy(_t[1]); _c[2].copy(_t[3]); _c[3].copy(_t[2]);
+      const sag = 0.2 + 0.08 * lifted;
+      const P = PONS[k]; P.set(_c[0], _c[1], _c[2], _c[3], sag);
+      const al = W.mesh.material === W.fade ? W.fade.opacity : 1, pm = P.mesh.material;
+      if ((al < 0.997) !== pm.transparent) { pm.transparent = al < 0.997; pm.needsUpdate = true; } pm.opacity = al;
+      // the man lies in the sag: his hips just above the poncho's lowest point; pitched with the poncho's slope
+      const want = (_c[0].y + _c[1].y + _c[2].y + _c[3].y) / 4 - sag * 0.95 + 0.05;
+      W.f.b.mixamorigHips.getWorldPosition(_h);
+      W.F.root.position.y += want - _h.y;
+      W.F.root.updateMatrixWorld(true);
+      return true;
     }
 
     // ---------- the frame ----------
@@ -968,7 +1051,6 @@
       const plans = plansFor(ch);
       if (frame < 90 || frame % 30 === 0) installRadios();   // final pass: marines-a-d.js loads after and takes Cahill's key; win it back on the first frames, so radio.js never draws from its fallback point
       camV.copy(ctx.camera.position);
-      LIT.n = 0;
       // the base fades a one-way chapter to black at its seam (index.html LOOP SEAM), so no figure fades of its own then
       const seamA = ctx.chapter.def && ctx.chapter.def.seam !== 'cut' ? 1 : sm(t / 1.2) * sm((L - t) / 1.2);
       for (const o of figs) {
@@ -976,6 +1058,7 @@
         if (!p || p.hidden) { if (F.root.visible) { F.root.visible = false; o.blob.hide(); } o.antOk = false; o.seg = -1; continue; }
         const i = findSeg(p, t), seg = p.segs[i];
         evalSeg(seg, t);
+        if (p.lit) litterPlace(p.lit, o.key, t, seg);
         // alpha: the seam, and any fade of the plan's own
         let a = p.seam ? seamA : 1;
         if (p.alphaFn) a *= p.alphaFn(t);
@@ -997,7 +1080,7 @@
         if (seg.down === undefined && !seg.carried && o.rifleG && seg.clip !== 'Dying (1)' && !(seg.prev && seg.prev.clip === 'Dying (1)')) o.rifleG = null;
         // update: every frame near, every 2nd past 40 m, every 3rd past 90 m (CLAUDE.md budget)
         const d = Math.hypot(f.x - camV.x, f.z - camV.z);
-        const every = o.fresh ? 1 : d > 90 ? 3 : d > 40 ? 2 : 1;
+        const every = o.fresh || p.lit ? 1 : d > 90 ? 3 : d > 40 ? 2 : 1;
         o.acc += dt;
         if ((frame + o.c.seed) % every === 0 || o.fresh) {
           CM.update(f, o.fresh ? 1 / 60 : Math.min(0.1, o.acc), t);
@@ -1012,7 +1095,6 @@
         }
         f.b.mixamorigHead.getWorldPosition(o.head);
         o.blob.set(f.x, gy(f.x, f.z), f.z, seg.lie ? 1.7 : E.lift ? 0.6 : 1);
-        if (seg.carried && E.lift > 0.3) litterUnder(o, E.lift);
         // his own shots: the muzzle flash and rounds from where his rifle points (fire.js draws them)
         if (!jumped && !wrapped && p.fires.length && window.FIRE && window.FIRE.burst) {
           for (const fr of p.fires) {
@@ -1023,7 +1105,9 @@
           }
         }
       }
-      LIT.m.count = LIT.n; LIT.m.instanceMatrix.needsUpdate = true;
+      let nl = 0;
+      for (const lit of LITTERS[ch] || []) if (nl < PONS.length && litterFrame(lit, t, nl)) nl++;
+      for (let i = nl; i < PONS.length; i++) PONS[i].hide();
       lastT = t;
     };
     releaseReady();

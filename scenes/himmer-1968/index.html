@@ -888,15 +888,16 @@
         { t: 30, at: [-8, 10], lift: 2, az: 238, el: 23, dist: 80 },
         { t: 60, at: [-14, 16], lift: 2, az: 196, el: 25, dist: 82 }] } },
     { id: 2, key: 'patrol', title: 'The patrol', date: '16 April', clock0: '0700', clock1: '1000', loop: 90, light: 'morning', lightHour: 8.0,
-      // follows Company A's column from above and ahead (the camera on the column's road, looking back up it) along the
-      // forest's edge: off 689, down the grass tongue, high over the short forest crossing, up the far tongue to A's LZ
+      // sweeps Company A's column from the tail to the point (fix pass, spacing: one closed-up file, so the camera
+      // walks up it rather than down the whole route): the tail on the grass tongue, the HQ and the platoon gaps, the
+      // point through the short forest crossing and up the far tongue toward A's LZ
       view: { keys: [
-        { t: 0, at: [-50, 68], lift: 1, az: 222, el: 40, dist: 35 },
-        { t: 20, at: [-84, 110], lift: 1, az: 218, el: 40, dist: 36 },
-        { t: 40, at: [-110, 168], lift: 1, az: 226, el: 42, dist: 36 },
-        { t: 56, at: [-150, 214], lift: 1, az: 165, el: 48, dist: 40 },
-        { t: 72, at: [-222, 248], lift: 1, az: 200, el: 44, dist: 38 },
-        { t: 90, at: [-240, 292], lift: 1, az: 190, el: 42, dist: 36 }] } },
+        { t: 0, at: [-98, 132], lift: 1, az: 222, el: 40, dist: 34 },
+        { t: 20, at: [-112, 170], lift: 1, az: 226, el: 40, dist: 34 },
+        { t: 40, at: [-140, 205], lift: 1, az: 222, el: 42, dist: 36 },
+        { t: 56, at: [-178, 232], lift: 1, az: 180, el: 56, dist: 38 },
+        { t: 72, at: [-204, 231], lift: 1, az: 200, el: 44, dist: 36 },
+        { t: 90, at: [-239, 263], lift: 1, az: 190, el: 42, dist: 34 }] } },
     { id: 3, key: 'contact', title: 'Contact', date: '16 April', clock0: '1000', clock1: '1200', loop: 120, light: 'day', lightHour: 10.5,
       // the north end from Company A's side, high enough to see men down in the grass; Hayden's rush from 30
       view: { keys: [

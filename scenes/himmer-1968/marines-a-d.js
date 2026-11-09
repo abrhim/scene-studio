@@ -18,13 +18,13 @@
 // Timing, as built (chapter, loop t):
 //   1  0-60   sentries in holes, two walk the ring; the CP at the table; CP radioman on the handset 7-15 (SitRep, 9);
 //             Company A forming on the south-west side, checking gear; Banks with his radioman
-//   2  0-90   A files down the A route as a moving column (three stretches of one loop each, rising out of the
-//             perimeter and sinking into the far grass), crouched where the land is forest; the CP watches south-west
+//   2  0-90   A walks the A route as one closed-up file (3.2 m in grass, 2.5 m crouched in the forest crossing, 12 m
+//             between platoons), the point from about 250 m to 325 m down the route; the chapter fades at its seam
 //   3  0-11   two squads push crouched from the base line into the grass; 11.2, 12.6 two men fall (wounded, breathing)
 //      16-   the base line answers in bursts (FIRE.burst from each man's muzzle); mortar flinches 38, 58, 81, 103
 //      30-50 Hayden's platoon assaults in short rushes (run, kneel, fire); falls 36.5, 41, 45 (Hayden), 48 (his
 //             sergeant), 52; the platoon halts at the fringe, prone; Banks on the handset 33-39.5, 43.5-49, 51.5-57
-//      60-   the fringe crawls back a few metres; two pairs drag the two wounded back to A's LZ (62-112)
+//      50-   two pairs go out (50, 57) and drag the two wounded back to A's LZ in short pulls; from 60 the fringe crawls back
 //   4  0-90   A pinned as chapter 3 ends; Banks on the handset 0.5-7.5 (the noon request, 1.2); a few bursts;
 //             Cahill and his radioman leave the CP at 28 and walk to the Charlie forming point (MARINES_AD.cahillEnd),
 //             arriving about 88; the 1320 message leaves his radioman at 83.5
@@ -131,6 +131,9 @@
     const G = ctx.groundY;
     const { mat } = await clay();
     await CM.load(CLIPS);
+    // the drag (fix pass, carries): the crouched walk with the rifle slung, both hands on the wounded man's harness
+    const DRAGC = 'C:Drag Crouch'; CM.slung('Rifle Crouch Walk', DRAGC); CLIPS.push(DRAGC);
+    V0[DRAGC] = V0['Rifle Crouch Walk']; VDEF[DRAGC] = VDEF['Rifle Crouch Walk'];
     const CL = CM.clips;
     const DUR = {}; for (const n of CLIPS) DUR[n] = CL[n].duration;
     // a second copy of each clip, so one figure can blend two times of the same clip (a seam, a crossfade)
@@ -196,7 +199,7 @@
     function stepPos(Ac, s, t, out) {
       const tau = t - s.t0;
       if (s.type === 'W') {
-        const d = s.d0 + clamp(tau, 0, s.dur) * s.v;
+        const d = s.d0 + pulseD(s, tau);
         pathAt(s.path, d, out);
         const py = s.yawFixed !== undefined ? s.yawFixed : pathYaw(s.path, d) + (s.rev ? Math.PI : 0);
         out.yaw = tau < s.dur ? turnTo(s.yawFrom, py, tau, s.turn) : turnTo(s.endYaw, s.stopYaw !== undefined ? s.stopYaw : s.endYaw, tau - s.dur);
@@ -212,6 +215,14 @@
         }
       }
       return out;
+    }
+    // a drag goes in short pulls (fix pass, carries): the speed surges and nearly stops on a 1.6 s beat, in phase for
+    // every man of one drag (the beat runs on the loop clock), averaging the step's speed
+    const PW = TAU / 1.6, PA = 0.8;
+    function pulseD(s, tau) {
+      const tt = clamp(tau, 0, s.dur);
+      if (!s.pulse) return tt * s.v;
+      return s.v * (tt - PA * (Math.sin(PW * (s.t0 + tt)) - Math.sin(PW * s.t0)) / PW);
     }
     function Plan(Ac, ch, L, x, z, yaw, clip, o) {
       o = o || {};
@@ -283,7 +294,7 @@
           break;
         }
         case 'W': {
-          const ct = loopT(s.clip, (s.rev ? -1 : 1) * Math.max(0, tau) * s.rate + s.ct0);
+          const ct = loopT(s.clip, (s.rev ? -1 : 1) * (s.pulse ? pulseD(s, tau) / s.v : Math.max(0, tau)) * s.rate + s.ct0);
           if (tau < s.dur) addLayer(S, s.clip, ct, w);
           else { const k = sm((tau - s.dur) / FADE); addLayer(S, s.clip, ct, w * (1 - k)); addLayer(S, s.stop, loopT(s.stop, tau - s.dur + s.stopCt0), w * k); }
           break;
@@ -560,75 +571,84 @@
         else idles(P, Ac, L, set, r);
       });
     }
-    // ---- chapter 2: the patrol as a moving column (three stretches, each one loop long)
+    // ---- chapter 2: the patrol as one moving column (fix pass, spacing: 2.5-3.5 m in grass and forest, platoons
+    // 12 m apart). Every man walks the same distance-time profile along the A route (walking in grass, crouched in the
+    // forest crossing), lagged behind the point man by his own time; so the file closes up where the going is slower,
+    // and a man who checks his pace opens a gap ahead and the man behind closes on him. The chapter fades at its seam
+    // (index.html LOOP SEAM), so the column only has to walk one stretch of the route a loop: the head from about 250 m
+    // down the route (the forest crossing) to about 320 m (the far tongue), the tail from about 90 m to 175 m.
     const CH2 = (() => {
       const L = LOOPS[2], route = lanePts(0, S6.routes.A.map((p) => [p.x, p.z]));
-      // the route cut into 4 m pieces, crouched where the land is forest (the draw)
       const full = mkPath(route), pieces = [];
-      const vw = 0.92, vc = 0.5;
+      const vw = 0.92, vc = 0.7;
       for (let d = 0; d < full.len - 0.01; d += 4) {
         const e = Math.min(full.len, d + 4), m = pathAt(full, (d + e) / 2, { x: 0, z: 0 });
         const forest = ctx.land && ctx.land.cls ? ctx.land.cls(m.x, m.z) === 0 : false;
         pieces.push({ d0: d, d1: e, clip: forest ? crouchWalk : 'Walk With Rifle', v: forest ? vc : vw });
       }
-      // smooth single-piece flickers between clips
       for (let i = 1; i < pieces.length - 1; i++) if (pieces[i - 1].clip === pieces[i + 1].clip && pieces[i].clip !== pieces[i - 1].clip) { pieces[i].clip = pieces[i - 1].clip; pieces[i].v = pieces[i - 1].v; }
       let tt = 0; for (const p of pieces) { p.t0 = tt; tt += (p.d1 - p.d0) / p.v; p.t1 = tt; }
-      const n = Math.max(1, Math.floor(tt / L));
-      return { L, full, pieces, n, total: tt };
+      const tOf = (d) => { for (const p of pieces) if (d <= p.d1) return p.t0 + (d - p.d0) / p.v; return tt; };
+      return { L, full, pieces, total: tt, T0: tOf(Math.min(250, full.len - 90)), tOf };
     })();
+    // the man's place on the profile: tg = T0 + t - lag(t); a check (he slows to look, then makes it up) bumps the lag
+    function ch2Lag(s, t) {
+      let lag = s.lag;
+      for (const c of s.checks) { const u = t - c.t; if (u > 0) lag += u < 4 ? c.a * sm(u / 4) : u < 13 ? c.a * (1 - sm((u - 4) / 9)) : 0; }
+      return lag;
+    }
     function conveyorPos(s, t, out) {
-      const C = CH2, L = C.L;
-      const tau = (((t + s.off) % L) + L) % L, tg = s.k * L + tau;
-      let i = s.hint || 0; const P = C.pieces;
+      const C = CH2, P = C.pieces;
+      const tg = clamp(C.T0 + t - ch2Lag(s, t), 0, C.total);
+      let i = s.hint || 0;
       while (i > 0 && P[i].t0 > tg) i--; while (i < P.length - 1 && P[i].t1 < tg) i++;
       s.hint = i;
-      const p = P[i], d = p.d0 + (tg - p.t0) * p.v;
+      const p = P[i], d = Math.min(p.d1, p.d0 + (tg - p.t0) * p.v);
       pathAt(C.full, d, out);
-      const side = s.side * 0.35;
-      const y = pathYaw(C.full, d);
+      const y = pathYaw(C.full, d), side = s.side + 0.18 * Math.sin(d * 0.21 + s.ph);
       out.x += Math.cos(y) * side; out.z -= Math.sin(y) * side;
-      out.yaw = y; out.d = d;
-      const d0 = 0, d1 = P[Math.min(P.length - 1, Math.floor((C.n * L) / 1e9))] && C.full.len;
-      void d0; void d1;
-      const dEnd = endD();
-      out.sink = (s.k === 0 ? 1.9 * (1 - sm(d / 3.5)) : 0) + (s.k === C.n - 1 ? 1.9 * sm((d - (dEnd - 3.5)) / 3.5) : 0);
-      out.piece = i;
+      out.yaw = y; out.d = d; out.sink = 0; out.piece = i; out.tg = tg;
       return out;
     }
-    let _endD = -1;
-    function endD() { if (_endD < 0) { const C = CH2, tg = C.n * C.L; let d = C.full.len; for (const p of C.pieces) if (p.t0 <= tg && p.t1 >= tg) d = p.d0 + (tg - p.t0) * p.v; _endD = d; } return _endD; }
-    const _cp = { x: 0, z: 0, yaw: 0, sink: 0, d: 0, piece: 0 };
+    const _cp = { x: 0, z: 0, yaw: 0, sink: 0, d: 0, piece: 0, tg: 0 };
     function conveyorLayers(Ac, s, t, S, w) {
       conveyorPos(s, t, _cp);
-      const P = CH2.pieces, p = P[_cp.piece], tg = s.k * CH2.L + ((((t + s.off) % CH2.L) + CH2.L) % CH2.L);
-      const ct = (clip) => loopT(clip, t * s.rates[clip] + s.ph);
+      const P = CH2.pieces, p = P[_cp.piece], tg = _cp.tg;
+      // the clip runs with the profile time, so the feet keep to the ground through a check
+      const ct = (clip) => loopT(clip, tg * s.rates[clip] + s.ph);
       const prev = _cp.piece > 0 ? P[_cp.piece - 1] : null;
       if (prev && prev.clip !== p.clip && tg - p.t0 < 0.6) { const k = sm((tg - p.t0) / 0.6); addLayer(S, p.clip, ct(p.clip), w * k); addLayer(S, prev.clip, ct(prev.clip), w * (1 - k)); }
       else addLayer(S, p.clip, ct(p.clip), w);
     }
     {
-      const C = CH2, L = C.L, perStretch = Math.ceil(45 / C.n);
-      // lanes: stretch by stretch; Hayden's platoon leads (the last stretch), Banks and his radioman in the middle
-      const order = [];
-      const lead = [24, 25].concat(A.map((_, i) => i).filter((i) => i >= 26));
-      const mid = [0, 1, 2].concat(A.map((_, i) => i).filter((i) => i >= 5 && i <= 23));
-      const rear = [3, 4];
-      const pool = rear.concat(mid, lead);   // stretch 0 first (the rear, nearest 689)
-      for (let i = 0; i < pool.length; i++) order.push(pool[i]);
-      const rr = rng(902);
-      order.forEach((ai, j) => {
-        const Ac = A[ai];
-        const k = Math.min(C.n - 1, Math.floor(j / perStretch)), lane = j % perStretch;
-        const off = (lane + 0.15 + rr() * 0.55) * L / perStretch;
-        const rates = {};
-        for (const clip of ['Walk With Rifle', crouchWalk]) {
-          const v = clip === crouchWalk ? 0.5 : 0.92, r = v / (V0[clip] * Ac.scale * Ac.stride), q = Math.max(1, Math.round(L * r / DUR[clip])) * DUR[clip] / L;
-          rates[clip] = q;
-        }
-        Ac.plans[2] = [{ type: 'C', t0: 0, k, off, side: (rr() - 0.5) * 1.6, rates, ph: Ac.phase * 7, clip: 'Walk With Rifle', x: 0, z: 0, yaw: 0, yawFrom: 0, sink: 0, fade: FADE }];
-        Ac.L[2] = L;
+      const C = CH2, L = C.L;
+      // file order from the point: Hayden's platoon (two men on point, Hayden, the corpsman mid-file, the platoon
+      // sergeant at its tail); 12 m; Banks and his radioman; 12 m; 1st Platoon, Lovely second from its head
+      const P2 = A.map((_, i) => i).filter((i) => i >= 26);
+      const plt2 = [P2[0], P2[1], 24].concat(P2.slice(2, 9), [2], P2.slice(9), [25]);
+      const hq = [0, 1];
+      const P1 = A.map((_, i) => i).filter((i) => i >= 5 && i <= 23);
+      const plt1 = [P1[0], 4].concat(P1.slice(1, 9), [3], P1.slice(9));
+      const blocks = [plt2, hq, plt1];
+      const rr = rng(902), DT = 3.5;   // 3.5 s: 3.2 m walking in grass, 2.45 m crouched in the forest
+      let lag = 0;
+      blocks.forEach((blk, bi) => {
+        if (bi > 0) lag += 12 / 0.92;
+        blk.forEach((ai, j) => {
+          if (j > 0) {
+            const u = rr();
+            lag += u < 0.1 ? 2.1 + rr() * 0.4 : u < 0.18 ? 5.2 + rr() * 1.0 : DT + (rr() - 0.5) * 1.3;   // bunched, a gap, else 3.5 s +- 0.65
+          }
+          const Ac = A[ai];
+          const rates = {};
+          for (const clip of ['Walk With Rifle', crouchWalk]) { const v = clip === crouchWalk ? 0.7 : 0.92; rates[clip] = v / (V0[clip] * Ac.scale * Ac.stride); }
+          const checks = [];
+          for (let tc = 6 + rr() * 30; tc < L - 14; tc += 25 + rr() * 40) if (rr() < 0.45) checks.push({ t: tc, a: 1.4 + rr() * 1.2 });
+          Ac.plans[2] = [{ type: 'C', t0: 0, lag, checks, side: (rr() - 0.5) * 0.7, rates, ph: Ac.phase * 7, clip: 'Walk With Rifle', x: 0, z: 0, yaw: 0, yawFrom: 0, sink: 0, fade: FADE }];
+          Ac.L[2] = L;
+        });
       });
+      C.tailLag = lag;
     }
     // ---- chapter 3: contact
     const restA = {};   // each man's pose as chapter 3 ends: chapters 4-7 start from it
@@ -639,7 +659,7 @@
       const woundAt = { 30: 36.5, 38: 41, 41: 52 };          // in the assault
       const mortarHit = { 16: 58.3, 33: 81.3, 9: 103.2 };    // hit near the mortar bursts
       const MORTARS = [38, 58, 81, 103];
-      const dragged = { 7: { pair: [18, 19], t: 62 }, 12: { pair: [21, 22], t: 74 } };
+      const dragged = { 7: { pair: [18, 19], t: 50 }, 12: { pair: [21, 22], t: 57 } };   // fix pass: earlier, so the first drag is under way by 70
       const pairOf = {}; for (const w in dragged) dragged[w].pair.forEach((p, j) => { pairOf[p] = { w: +w, j, t: dragged[w].t }; });
       const plans = {};
       const order3 = [5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 4].concat(A.map((_, i) => i).filter((i) => i >= 24), [0, 1, 2, 3]);
@@ -879,8 +899,11 @@
     function files(ch, members, side, t0, gap, o) {
       const L = LOOPS[ch];
       const lp = mkPath(lanePath.pts.map((p, k) => { const y = pathYaw(lanePath, lanePath.cum[k]); return [p[0] + Math.cos(y) * side, p[1] - Math.sin(y) * side]; }));
+      // fix pass, spacing: a man every 3.3 s (3.0 m at 0.92 m/s), +-0.65 s, so the file keeps touch in the grass
+      const rg = rng(8800 + Math.round(side * 100)); let e = t0;
       members.forEach((Ac, j) => {
-        const e = t0 + j * gap, clip = o.injured && o.injured.includes(Ac.idx) ? 'Injured Walk' : 'Walk With Rifle';
+        if (j > 0) e = Math.min(e + gap + (rg() - 0.5) * 1.3, 87.5 - o.len / 0.92);
+        const clip = o.injured && o.injured.includes(Ac.idx) ? 'Injured Walk' : 'Walk With Rifle';
         const P = Plan(Ac, ch, L, lp.pts[0][0], lp.pts[0][1], pathYaw(lp, 0), clip);
         P.steps[0].type = 'X';
         P.walk(e, clip, null, { path: lp, d0: 0, d1: o.len, v: 0.92, sinkIn: true, sinkOut: true });
@@ -889,11 +912,12 @@
     }
     {
       const alive = (Ac) => !downA(Ac);
-      const aFile = A.filter((Ac) => alive(Ac)).slice(0, 21);
-      if (!aFile.includes(A[0])) aFile.splice(6, 0, A[0]);
-      const dFile = D.filter((Ac, i) => deltaDown[i] === undefined).slice(0, 21);   // the four wounded went out from the LZ, not walking (fix pass)
-      files(8, aFile, -0.35, 0.4, 2.0, { len: 40, injured: [0] });
-      files(8, dFile, 0.45, 1.3, 2.0, { len: 40 });
+      // 14 a file (fix pass, spacing): at 3 m apart that many clear the 40 m of lane by about 87
+      const aFile = A.filter((Ac) => alive(Ac)).slice(0, 14);
+      if (!aFile.includes(A[0])) aFile.splice(4, 1, A[0]);
+      const dFile = D.filter((Ac, i) => deltaDown[i] === undefined).slice(0, 14);   // the four wounded went out from the LZ, not walking (fix pass)
+      files(8, aFile, -0.35, 0.4, 3.3, { len: 40, injured: [0] });
+      files(8, dFile, 0.45, 1.9, 3.3, { len: 40 });
       for (const Ac of A) if (!Ac.plans[8]) hidden(Ac, 8, LOOPS[8]);
       for (const Ac of D) if (!Ac.plans[8]) hidden(Ac, 8, LOOPS[8]);
     }
@@ -911,7 +935,7 @@
         const path = mkPath(pts);
         const P = Plan(Ac, 9, L, path.pts[0][0], path.pts[0][1], pathYaw(path, 0), 'Walk With Rifle');
         P.steps[0].type = 'X';
-        const tStart = 40 + k * 4.2;
+        const tStart = 40 + k * 3.5 + (k === 3 ? 1.6 : 0);   // fix pass: 3.0 m apart, one gap where a man stops to look
         P.walk(tStart, 'Walk With Rifle', null, { path, v: 0.86, sinkIn: true, stop: k % 2 ? 'Rifle Kneel Idle' : 'Rifle Idle' });
       });
     }
@@ -925,16 +949,19 @@
       A.forEach((Ac, i) => {
         const r = rng(1100 + i);
         if (i >= 5 && i <= 14) {
-          const lane = i - 5, sd = (lane - 4.5) * 2.4;
-          const p0 = [pw.x - dirV.x * 6 + latV.x * sd, pw.z - dirV.z * 6 + latV.z * sd];
-          const p1 = [pw.x + dirV.x * (9 + r() * 2) + latV.x * sd * 1.2, pw.z + dirV.z * (9 + r() * 2) + latV.z * sd * 1.2];
+          // fix pass, spacing: each squad in its own file, 3 m man to man (+-0.5), the files 10 m apart (was a line
+          // 2.4 m apart)
+          const lane = i - 5, sq = lane < 5 ? -1 : 1, rank = lane % 5, sd = sq * 5 + (r() - 0.5) * 0.8;
+          const p0 = [pw.x - dirV.x * (4 + rank * 3) + latV.x * sd, pw.z - dirV.z * (4 + rank * 3) + latV.z * sd];
+          const a1 = 14 - rank * 3 + (r() - 0.5);
+          const p1 = [pw.x + dirV.x * a1 + latV.x * sd * 1.1, pw.z + dirV.z * a1 + latV.z * sd * 1.1];
           const P = Plan(Ac, 11, L, p0[0], p0[1], yawV, 'Rifle Kneel Idle');
-          P.walk(1 + r() * 1.5, 'Walk With Rifle', [p1], { stop: lane === 2 || lane === 7 ? 'Pointing' : 'Looking Around', stopYaw: yawV, v: 0.95 });
+          P.walk(1 + rank * 0.4 + r() * 0.5, 'Walk With Rifle', [p1], { stop: rank === 0 ? 'Pointing' : 'Looking Around', stopYaw: yawV, v: 0.95 });
           P.hold(12.25 + r() * 0.9, 'Prone Idle', { fade: 0.5, yaw: yawV });
           P.walk(40 + r() * 8, 'Low Crawl', [[p1[0] - dirV.x * 6, p1[1] - dirV.z * 6]], { rev: true, v: 0.26, stop: 'Prone Idle' });
           P.hold(70 + r() * 6, 'Rifle Kneel Idle', { fade: 1.0, yaw: yawV });
           P.walk(74 + r() * 6, 'Walk With Rifle', [p0], { stop: 'Rifle Kneel Idle', stopYaw: yawV, v: 0.8 });
-          if (lane === 2 || lane === 7) P.gesture(9.8, 2.6, 'Pointing');
+          if (rank === 0) P.gesture(9.8, 2.6, 'Pointing');
         } else if (i >= 15 && i <= 18) {
           // the ramp party: shown only while the ramp is down (see the frame update), crouched, facing out
           const P = Plan(Ac, 11, L, 0, 0, 0, 'Idle Crouching');
@@ -954,26 +981,43 @@
       return mkPath(pts);
     })();
     {
-      const L = LOOPS[5], dHead = colPath.cum[Math.max(0, colPath.pts.length - 4)] - 2;   // the head waits at the gap
+      // fix pass, spacing: waiting, the file stands closed up round the inside of the perimeter (about 2.3 m: the ring
+      // is not long enough for more); moving, each man steps off when the man ahead is 4.5 m on (an accordion), so on
+      // 689's bare top they walk 4.5 m apart; outside the wire, in the grass, the file slows to 0.6 m/s and closes to
+      // about 3 m (each man keeps the same time behind the man ahead). Whoever has not stepped off by the rockets (60)
+      // goes on after them.
+      const L = LOOPS[5], dB = colPath.cum[Math.max(0, colPath.pts.length - 4)], dHead = dB - 2;   // the head waits at the gap
+      const vT = 0.86, vG = 0.6, gapT = Math.min(4.5, (dHead - 1) / 46);
+      // where a man who sets off from d at t0 is at t1, and the walk steps that take him there
+      const reach = (d, t0, t1) => { const tIn = d < dB ? (dB - d) / vT : 0; const T = t1 - t0; return T <= tIn ? d + T * vT : Math.max(d, dB) + (T - tIn) * vG; };
+      const walkTo = (P, lp, d0, t0, t1) => {
+        const d1 = reach(d0, t0, t1);
+        if (d0 < dB && d1 > dB) { P.walk(t0, 'Walk With Rifle', null, { path: lp, d0, d1: dB, v: vT }); P.walk(P.endsAt, 'Walk With Rifle', null, { path: lp, d0: dB, d1: d1 + 0.01, v: vG }); }
+        else P.walk(t0, 'Walk With Rifle', null, { path: lp, d0, d1: d1 + 0.01, v: d1 > dB ? vG : vT });
+        return d1;
+      };
+      // places in the file: Cargile 4th, his radioman 5th, the corpsman 11th, the rest in turn (fix pass: the old map
+      // gave two men the same place)
+      const ORD = {}; { const fixed = { 0: 3, 1: 4, 2: 10 }, taken = new Set(Object.values(fixed)); let n = 0; D.forEach((_, i) => { if (fixed[i] !== undefined) { ORD[i] = fixed[i]; return; } while (taken.has(n)) n++; ORD[i] = n++; }); }
       D.forEach((Ac, i) => {
         const r = rng(5200 + i);
-        const order = i === 0 ? 3 : i === 1 ? 4 : i === 2 ? 10 : i < 4 ? i - 3 : i + (i >= 4 ? 1 : 0);
-        const d = dHead - order * 2.7 - r() * 0.6;
+        const order = ORD[i];
+        const d = dHead - order * gapT - (r() - 0.5) * 1.2;
         const p = pathAt(colPath, Math.max(0, d), { x: 0, z: 0 });
         const yaw = pathYaw(colPath, Math.max(0, d));
-        const side = (r() - 0.5) * 1.6;
+        const side = (r() - 0.5) * 1.0;
         const x = p.x + Math.cos(yaw) * side, z = p.z - Math.sin(yaw) * side;
         const c0 = Ac.kind === 'rifleman' ? (r() < 0.5 ? 'Rifle Kneel Idle' : 'Rifle Idle') : 'Looking Around';
         const P = Plan(Ac, 5, L, x, z, yaw + (r() - 0.5) * 0.6, c0);
         const lp = mkPath(colPath.pts.map((q, k) => { const y = pathYaw(colPath, colPath.cum[k]); return [q[0] + Math.cos(y) * side, q[1] - Math.sin(y) * side]; }));
         const dd = Math.max(0, d);
-        const tGo = 40 + order * 0.25;
-        P.hold(tGo - 3 - r() * 2, 'Rifle Idle', { fade: 0.9, yaw });
-        P.walk(tGo, 'Walk With Rifle', null, { path: lp, d0: dd, d1: dd + (60.3 - tGo) * 0.86 + 0.01, v: 0.86 });
+        const tGo = 40 + order * Math.max(0.25, (4.5 - gapT) / vT) + (r() - 0.5) * 0.6;
+        P.hold(Math.min(tGo, 60) - 3 - r() * 2, 'Rifle Idle', { fade: 0.9, yaw });
+        const dMid = tGo < 59.5 ? walkTo(P, lp, dd, tGo, 60.3) : dd;
         P.hold(60.3 + r() * 0.7, 'Prone Idle', { fade: 0.4 });
-        const dMid = dd + (60.3 - tGo) * 0.86;
         P.hold(79.5 + r() * 1.5, 'Rifle Kneel Idle', { fade: 1.0 });
-        P.walk(81.5 + order * 0.08, 'Walk With Rifle', null, { path: lp, d0: dMid, d1: dMid + 38 * 0.86, v: 0.86 });
+        const tGo2 = 81.5 + Math.max(0, tGo - 60.3) + order * 0.08;
+        if (tGo2 < 118) walkTo(P, lp, dMid, tGo2, 119.5);
       });
     }
     // chapter 6: arriving east of the ridge, crouched; pairs go out for A's crawling wounded
@@ -1094,6 +1138,38 @@
     // D in chapter 1-4: not shown (the brief places them from chapter 5)
 
     A[1].f.lendTo = [A[0].f, A[4].f]; D[1].f.lendTo = [D[0].f];   // Banks, Lovely; Cargile
+    // ---------- drags (fix pass, carries) ----------
+    // Every drag in the plans (a wounded man's Laying Breathless walk, and the two men crouch-walking backward beside him
+    // at the same time): the pair go to the slung crouch, all three move in short pulls, and each frame the pair kneel
+    // at his shoulders with both hands on his harness (CM.grip) while his chest is lifted off the ground (CM.chestLift).
+    const DRAGS = {};
+    for (const ch of [3, 6, 7]) {
+      for (const Wm of actors) {
+        const steps = Wm.plans[ch]; if (!steps) continue;
+        for (const ws of steps) {
+          if (ws.type !== 'W' || ws.clip !== 'Laying Breathless' || ws.dur < 2) continue;
+          const tm = ws.t0 + ws.dur * 0.5, wp = stepPos(Wm, ws, tm, { x: 0, z: 0, yaw: 0, sink: 0, d: 0 });
+          const cand = [];
+          for (const Ac of actors) {
+            if (Ac === Wm || !Ac.plans[ch]) continue;
+            for (const st of Ac.plans[ch]) {
+              if (st.type !== 'W' || !st.rev || st.clip !== crouchWalk) continue;
+              const ov = Math.min(st.t0 + st.dur, ws.t0 + ws.dur) - Math.max(st.t0, ws.t0);
+              if (ov < 0.6 * ws.dur) continue;
+              const p = stepPos(Ac, st, tm, { x: 0, z: 0, yaw: 0, sink: 0, d: 0 }), dd = Math.hypot(p.x - wp.x, p.z - wp.z);
+              if (dd < 4.0) cand.push({ Ac, st, dd });
+            }
+          }
+          cand.sort((a, b) => a.dd - b.dd);
+          const by = cand.slice(0, 2);
+          if (!by.length) continue;
+          ws.pulse = true;
+          for (const c of by) { c.st.clip = DRAGC; c.st.pulse = true; c.st.rate = c.st.v / (V0[DRAGC] * c.Ac.scale * c.Ac.stride); c.st.ct0 = c.Ac.phase * DUR[DRAGC]; }
+          (DRAGS[ch] = DRAGS[ch] || []).push({ w: Wm, ws, by: by.map((c, j) => ({ Ac: c.Ac, st: c.st, j })) });
+        }
+      }
+    }
+    for (const ch in DRAGS) for (const D0 of DRAGS[ch]) for (const b of D0.by) b.Ac.dragOf = b.Ac.dragOf || {}, b.Ac.dragOf[ch] = { D0, b };
     decideSeams();
 
     // ---------- the grass trodden flat where the men kneel and lie (into works.clearings, which land.js reads) ----------
@@ -1196,7 +1272,7 @@
     };
     window.marines = window.marines || {};
     window.marines.radios = Object.assign(window.marines.radios || {}, radios);
-    window.MARINES_AD = { figures: actors.map((a) => a.f), actors, byKey, radios, posAt: (Ac, ch, t) => { const st = stateAt(Ac, ch, t, S2); return { x: st.x, z: st.z, hidden: st.hidden }; }, cahillEnd: v3(cahillEnd[0], G(cahillEnd[0], cahillEnd[1]), cahillEnd[1]), clearings, ready: true, tris: nTris };
+    window.MARINES_AD = { figures: actors.map((a) => a.f), actors, byKey, radios, ch2: CH2, drags: DRAGS, posAt: (Ac, ch, t) => { const st = stateAt(Ac, ch, t, S2); return { x: st.x, z: st.z, hidden: st.hidden }; }, cahillEnd: v3(cahillEnd[0], G(cahillEnd[0], cahillEnd[1]), cahillEnd[1]), clearings, ready: true, tris: nTris };
 
     // ---------- the CH-46 (chapter 11): the ramp party rides inside, seen only while the ramp is down ----------
     let heli = null;
@@ -1231,6 +1307,48 @@
       m.count = 0; m.frustumCulled = false; m.instanceMatrix.setUsage(THREE.DynamicDrawUsage); ctx.scene.add(m);
       return { m, M: new THREE.Matrix4(), q: new THREE.Quaternion(), p: v3(0, 0, 0), s: v3(1, 1, 1), h: v3(0, 0, 0), d: v3(0, 0, 0), e: new THREE.Euler() };
     })();
+    // ---------- drags, per frame ----------
+    for (const ch in DRAGS) for (const D0 of DRAGS[ch]) { (D0.w.dragged = D0.w.dragged || {})[ch] = true; D0.sh = [v3(0, 0, 0), v3(0, 0, 0)]; D0.hp = v3(0, 0, 0); D0.ok = false; }
+    const dragK = (st, t) => sm((t - st.t0 + 0.2) / 0.8) * (1 - sm((t - (st.t0 + st.dur + 0.2)) / 0.8));
+    // the pair: each kneels just off one of the man's shoulders, facing it, from where his hands reach the harness
+    function dragPlace(R, t, S) {
+      const { D0, b } = R, k = dragK(b.st, t);
+      if (k <= 0 || !D0.ok) return;
+      const sh = D0.sh[b.side !== undefined ? b.side : (b.side = b.j)], so = D0.sh[1 - b.side], hp = D0.hp;
+      // up the body (hips to the shoulders' middle) and out from it (the middle to his shoulder): he kneels beyond the
+      // shoulder, a little outboard, so the two never stand on the man
+      const mx = (sh.x + so.x) / 2, mz = (sh.z + so.z) / 2;
+      let ux = mx - hp.x, uz = mz - hp.z; const ul = Math.hypot(ux, uz) || 1; ux /= ul; uz /= ul;
+      let ox = sh.x - mx, oz = sh.z - mz; const ol = Math.hypot(ox, oz) || 1; ox /= ol; oz /= ol;
+      const tx = sh.x + ux * 0.3 + ox * 0.26, tz = sh.z + uz * 0.3 + oz * 0.26;
+      S.x += (tx - S.x) * k; S.z += (tz - S.z) * k;
+      S.yaw += wrapA(yawOf(sh.x - tx, sh.z - tz) - S.yaw) * k;
+    }
+    const _dl = v3(0, 0, 0), _dr = v3(0, 0, 0), _dd = v3(0, 0, 0);
+    function dragFrame(D0, t) {
+      const Wm = D0.w, k = dragK(D0.ws, t);
+      if (!Wm.F.root.visible || k <= 0) { D0.ok = false; return; }
+      if (Wm.updN === frameN) CM.chestLift(Wm.f, 0.5 * k);
+      const b = Wm.f.b;
+      b.mixamorigLeftArm.getWorldPosition(D0.sh[0]); b.mixamorigRightArm.getWorldPosition(D0.sh[1]); b.mixamorigHips.getWorldPosition(D0.hp);
+      if (!D0.ok) {
+        // which shoulder each man takes: the nearer one
+        const p0 = D0.by[0].Ac.F.root.position;
+        const near0 = Math.hypot(p0.x - D0.sh[0].x, p0.z - D0.sh[0].z) < Math.hypot(p0.x - D0.sh[1].x, p0.z - D0.sh[1].z) ? 0 : 1;
+        D0.by[0].side = near0; if (D0.by[1]) D0.by[1].side = 1 - near0;
+      }
+      D0.ok = true;
+      for (const B of D0.by) {
+        const Ac = B.Ac, kb = dragK(B.st, t);
+        if (!Ac.F.root.visible || kb < 0.5 || Ac.updN !== frameN) continue;
+        const sh = D0.sh[B.side];
+        // both hands in the harness at the armpit: a hand's width either side of the shoulder joint along the body
+        _dd.subVectors(sh, D0.hp).setY(0).normalize();
+        _dl.copy(sh).addScaledVector(_dd, 0.07); _dl.y -= 0.04;
+        _dr.copy(sh).addScaledVector(_dd, -0.07); _dr.y -= 0.04;
+        CM.grip(Ac.f, _dl, _dr, { lean: 0.45 });
+      }
+    }
     // ---------- per frame ----------
     const frustum = new THREE.Frustum(), pm = new THREE.Matrix4(), sph = new THREE.Sphere(v3(0, 0, 0), 2.2);
     let frameN = 0, lastCh = -1;
@@ -1262,14 +1380,17 @@
         const inView = dist < 380 && frustum.intersectsSphere(sph);      // past 380 m a man is under 4 px tall: not drawn
         Ac.acc += dt;
         if (!inView && !jump) { if (root.visible) root.visible = false; continue; }
-        const every = dist < 40 ? 1 : dist < 120 ? 2 : 3;
+        const inDrag = (Ac.dragOf && Ac.dragOf[ch]) || (Ac.dragged && Ac.dragged[ch]);
+        const every = inDrag ? 1 : dist < 40 ? 1 : dist < 120 ? 2 : 3;
         if (!jump && root.visible && (frameN + Ac.idx) % every) continue;
+        if (Ac.dragOf && Ac.dragOf[ch]) dragPlace(Ac.dragOf[ch], t, S);
         apply(Ac, S);
         CM.update(Ac.f, Math.min(0.25, Ac.acc), tAbs);
-        Ac.acc = 0; nu++;
+        Ac.acc = 0; nu++; Ac.updN = frameN;
         root.visible = true;
         if (S.sink < 0.9) Ac.blob.set(S.x, gy, S.z, /Prone|Laying|Crawl|Dying/.test(Ac.mainClip) ? 1.5 : 1); else Ac.blob.hide();
       }
+      for (const D0 of DRAGS[ch] || []) dragFrame(D0, t);
       for (const Ac of actors) {
         const pt = Ac.pon && Ac.pon[ch];
         if (pt === undefined || t < pt || !Ac.F.root.visible || np >= 16) continue;

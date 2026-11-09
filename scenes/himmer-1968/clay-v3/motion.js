@@ -531,6 +531,79 @@
   }
   // For other plug-ins: where a figure's muzzle is and which way it points (FIRE.burst), and a radioman's handset,
   // antenna tip and pack (radio.js). World space; out vectors are reused.
+  // ---------------------------------------------------------------- carries (fix pass: litters and drags)
+  // CM.slung(src, name): a copy of a clip with the rifle slung on the back (both hands free for a carry); registered
+  // in CM.clips under name. CM.grip(f, L, R, o): after CM.update, each hand given a world point (or null) is laid on it
+  // by two-bone IK, the elbow bending out and back, the fingers closed; o.lean (rad) bows the back toward the load,
+  // o.toward (world point) tips the shoulders that way; o.reachMax, if given, is filled with each hand's miss (m).
+  // CM.chestLift(f, ang): raises a lying man's chest and head about his hips (a drag lifts the shoulders).
+  // CM.poncho(scene, color): a sagging poncho slung between four corners, folded; .set(c0, c1, c2, c3, sag) with the
+  // corners in order front-left, front-right, rear-right, rear-left (world points), .hide().
+  CM.slung = function (src, name) {
+    if (clips[name]) return clips[name];
+    const c = clips[src]; if (!c) return null;
+    const k = c.clone(); k.name = name;
+    k.userData = Object.assign({}, c.userData, { name, rifle: undefined, cfg: Object.assign({}, c.userData.cfg, { rifle: 'sling' }) });
+    clips[name] = k; return k;
+  };
+  const G_ = { t: V(0, 0, 0), pole: V(0, 0, 0), s: V(0, 0, 0), h: V(0, 0, 0), side: V(0, 0, 0), q: new THREE.Quaternion() };
+  CM.grip = function (f, tL, tR, o) {
+    o = o || {};
+    const b = f.b, root = f.F.root;
+    if (o.lean || o.toward) {
+      const sp = b[MB('Spine1')], sp2 = b[MB('Spine2')];
+      if (o.lean) { premul(sp, RIGHT, -o.lean * 0.55); premul(sp2, RIGHT, -o.lean * 0.45); }
+      if (o.toward) {
+        root.worldToLocal(G_.side.copy(o.toward)); const sgn = G_.side.x > 0 ? 1 : -1;
+        premul(sp, FWD, sgn * (o.tip || 0.12));
+      }
+      root.updateMatrixWorld(true);
+    }
+    for (const [s, tgt] of [['Left', tL], ['Right', tR]]) {
+      if (!tgt) continue;
+      const ua = b[MB(s + 'Arm')], fa = b[MB(s + 'ForeArm')], hd = b[MB(s + 'Hand')];
+      wpos(ua, G_.s);
+      // the palm, not the wrist, on the point: aim the wrist a palm's length short of it, from the shoulder
+      G_.t.copy(tgt).sub(G_.s); const dl = G_.t.length(); G_.t.multiplyScalar(Math.max(0, dl - 0.07 * f.scale) / (dl || 1)).add(G_.s);
+      wpos(fa, G_.pole); const sg = s === 'Left' ? 1 : -1;
+      G_.pole.add(G_.h.set(sg * 0.3, -0.1, -0.25).multiplyScalar(f.scale).applyQuaternion(root.quaternion));
+      twoBoneIK(ua, fa, hd, G_.t, G_.pole);
+      // the hand turned palm-down onto the grip, fingers forward along the forearm
+      wpos(fa, G_.s); wpos(hd, G_.h);
+      hd.updateMatrixWorld(true);
+      curl(f, s, { c: 1.15, w: 1 }, 1, 0.8);
+      if (o.reachMax) { wpos(hd, G_.h); o.reachMax[s] = G_.h.distanceTo(G_.t); }
+    }
+    root.updateMatrixWorld(true);
+  };
+  CM.chestLift = function (f, ang) {
+    if (!ang) return;
+    premul(f.b[MB('Spine')], RIGHT, -ang * 0.5); premul(f.b[MB('Spine1')], RIGHT, -ang * 0.3); premul(f.b[MB('Neck')], RIGHT, -ang * 0.2);
+    f.F.root.updateMatrixWorld(true);
+  };
+  CM.poncho = function (scene, color) {
+    const NU = 6, NV = 12;   // across, along
+    const geo = new THREE.BufferGeometry(), pos = new Float32Array((NU + 1) * (NV + 1) * 3), idx = [];
+    for (let v = 0; v < NV; v++) for (let u = 0; u < NU; u++) { const a = v * (NU + 1) + u, b2 = a + 1, c = a + NU + 1, d = c + 1; idx.push(a, c, b2, b2, c, d); }
+    geo.setIndex(idx); geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color, roughness: 0.96, flatShading: true, side: THREE.DoubleSide }));
+    mesh.frustumCulled = false; mesh.visible = false; scene.add(mesh);
+    const P = { mesh, set(c0, c1, c2, c3, sag) {
+      for (let v = 0; v <= NV; v++) for (let u = 0; u <= NU; u++) {
+        const a = u / NU, l = v / NV;
+        // bilinear between the corners (front edge c0-c1 at l 0, rear edge c3-c2 at l 1)
+        const x = (c0.x * (1 - a) + c1.x * a) * (1 - l) + (c3.x * (1 - a) + c2.x * a) * l;
+        let y = (c0.y * (1 - a) + c1.y * a) * (1 - l) + (c3.y * (1 - a) + c2.y * a) * l;
+        const z = (c0.z * (1 - a) + c1.z * a) * (1 - l) + (c3.z * (1 - a) + c2.z * a) * l;
+        // the sag (deepest under the hips, a little forward of centre), the rolled edges stiff, and a few folds
+        const su = Math.sin(Math.PI * a), sv = Math.sin(Math.PI * Math.min(1, l * 1.05));
+        y -= sag * Math.pow(su, 0.7) * Math.pow(sv, 0.8) + 0.018 * Math.sin(l * 23 + a * 4) * su + 0.012 * Math.sin(a * 17) * sv;
+        const k = (v * (NU + 1) + u) * 3; pos[k] = x; pos[k + 1] = y; pos[k + 2] = z;
+      }
+      geo.attributes.position.needsUpdate = true; geo.computeVertexNormals(); geo.computeBoundingSphere(); mesh.visible = true;
+    }, hide() { mesh.visible = false; } };
+    return P;
+  };
   CM.muzzle = (f, pos, dir) => { const r = f.b.rifle; if (!f.F.grip) return null; pos.set(0.49, 0.022, 0).applyMatrix4(r.matrixWorld); if (dir) dir.set(1, 0, 0).transformDirection(r.matrixWorld); return pos; };
   CM.radioPoints = (f) => {
     if (f.F.kind !== 'radioman') return null;
