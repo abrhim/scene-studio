@@ -33,10 +33,11 @@
 //   7   3-118   sniper single shots at Delta's approach, one every 6-10 s, from a slit in frame or a glint on the ridge
 //   7   9, 31, 55, 77, 99  mortar bursts on the slopes
 //   7   95-110  smoke grenades: yellow at Charlie's LZ, purple at A's LZ (gone by 119)
-//   8   0-90    sparse fire from two slits (its camera frames none: not drawn)
+//   8   4-86    sparse fire from the horseshoe's east-face slit (arc9), in frame for each burst (camera pass)
 //   9   12, 35, 78  one bunker slit, short bursts toward the crater area
 //   9   14.5, 15.3, 36.6, 37.2, 80.5  Hunnicutt's single shots back (marines-c.js, from his rifle)
 //   9   42.0    Hunnicutt's grenade bursts (the throw leaves his hand at 40.8), dust, then quiet
+//   11  12.0, 14.0  two single shots from a north-end slit in frame, no tracer (the voice across the valley stops)
 //   11  92.8-98 spider holes round the battle-hill LZ fire up at the CH-46 (its hover window)
 //   1, 2, 4, 10  quiet
 (function () {
@@ -148,7 +149,10 @@
         const faceC = (s) => { const d = s.dir || { x: 0, z: 0 }, u = flat(s, S.charliePause); return d.x * u.x + d.z * u.z > 0.2; };
         const nearC = horseshoe.filter(faceC).concat(horseshoe.filter((s) => !faceC(s))).sort((a, b) => (faceC(b) - faceC(a)) || (dist(a, S.charliePause) - dist(b, S.charliePause))).slice(0, 5);
         // chapter 9: the slit that fires on the crater area (15-60 m off), else the second position
-        const cands = slits.filter((s) => dist(s, S.himmerFall) >= 15 && dist(s, S.himmerFall) <= 60).sort((a, b) => dist(a, S.himmerFall) - dist(b, S.himmerFall));
+        // camera pass: only a slit whose mouth faces the crater (arc6, 19 m off, faces away from it, so its flash is behind
+        // its own mound from any camera that also sees the men); 12-60 m off
+        const faceH = (s) => { const d = s.dir || { x: 0, z: 0 }, u = flat(s, S.himmerFall); return d.x * u.x + d.z * u.z > 0.5; };
+        const cands = slits.filter((s) => dist(s, S.himmerFall) >= 12 && dist(s, S.himmerFall) <= 60 && faceH(s)).sort((a, b) => dist(a, S.himmerFall) - dist(b, S.himmerFall));
         // the one the chapter camera frames at the times it fires (12, 35, 78), else the nearest (fix pass)
         const s9 = cands.find((s) => [12, 35, 78].filter((t) => FIRE.seenAt(s.m, 9, t)).length >= 2) || cands[0] || second[0];
         const hun = pt(S.himmerFall.x - 1.0, S.himmerFall.z + 0.8, 0.45);
@@ -230,7 +234,7 @@
           bx += u.x * over; bz += u.z * over;
           const by = o.by !== undefined ? o.by + (rng() - 0.5) * 1.2 : gy(bx, bz) + 0.4 + rng() * 1.6;
           const d = Math.hypot(bx - a.x, by - a.y, bz - a.z);
-          rounds.push({ t, ax: a.x, ay: a.y, az: a.z, bx, by, bz, d, dur: d / FIRE.speed, side, tracer: o.tracer !== false, fs: o.fs || (side ? 1.15 : 0.55), fl: o.fl, src: o.src || '?', hole: o.hole, fx: a.fx, fz: a.fz });
+          rounds.push({ t, ax: a.x, ay: a.y, az: a.z, bx, by, bz, d, dur: d / FIRE.speed, side, tracer: o.tracer !== false, fs: o.fs || (side ? 1.15 : 0.55), fl: o.fl, far: o.far, src: o.src || '?', hole: o.hole, fx: a.fx, fz: a.fz });
         }
         function gunPuff(t, a, sz, life) {
           emitters.push({ t0: t, t1: t, x: a.x, y: a.y, z: a.z, every: 1, life: life || 7, size: sz || 0.45, rise: 1.2, col: gunCol, seed: eid++, drift: 0.8 });
@@ -283,7 +287,18 @@
           for (const t of [38, 58, 81, 103]) if (rng() < R.mortar + 0.001) blast(t, near(pick(P.A), 5), 'mortar');
           ridgeSmoke(P.north[0], 14, 108);
           timing.push([3, '11-114', 'north-end slits fire on A'], [3, '16-114', 'A answers in bursts (marines-a-d.js)'], [3, '38, 58, 81, 103', 'mortars on A']);
-        } else if (id === 5) {
+        } else if (id === 4 || id === 5) {
+          // camera pass: A pinned at the north end all through 1200-1435 (DY p. 313-315). While the chapter camera looks
+          // across the valley at the north end (ch 4: 20-45, its bursts from 24; ch 5: 22-46, the Army call holds 50-62), the north-end slit facing 689 that it sees
+          // fires on A; at 300-470 m its flash is drawn as a bright pinpoint (fs, the glow's floor in pixels)
+          const w = id === 4 ? [24, 45] : [23, 46], ts = [];
+          for (let t = w[0] + 1; t < w[1]; t += 4) ts.push(t);
+          const nn = P.slits.filter((s) => /^north/.test(s.id)).map((s) => ({ s, n: ts.filter((t) => FIRE.seenAt(s.m, id, t)).length })).sort((a, b) => b.n - a.n);
+          const sN = nn.length && nn[0].n ? nn[0].s : P.north[0];
+          stream(sN, P.A, w[0], w[1], id === 4 ? { act: () => 0.7, w: 1.6, fs: 3.2, far: 1, src: 'slit:' + sN.id } : { act: () => 0.7, w: 1.6, fs: 1.6, far: 1, src: 'slit:' + sN.id });   // ch 5's camera is 130 m off
+          timing.push([id, w.join('-'), 'a north-end slit fires on A (the camera looks across at the north end)']);
+        }
+        if (id === 5) {
           for (let k = 0; k < 15; k++) {
             const t = 60 + k * (20 / 15) + rng() * 0.6, b = rng() * 360, p = S.perimeter.at(b);
             blast(t, near(p, 6), 'rocket');
@@ -321,21 +336,27 @@
           ridgeSmoke(S.battleSummit, 0, 110);
           timing.push([7, '0-120', 'whole ridge, lighter'], [7, '3-118', 'sniper singles at Delta, every 6-10 s'], [7, '9, 31, 55, 77, 99', 'mortars'], [7, '103-119', 'yellow smoke at C\'s LZ, purple at A\'s LZ (the medevacs land 116.5, 118)']);
         } else if (id === 8) {
-          // the two slits nearest Charlie's line that the chapter camera sees (fix pass; were off the top of its frame)
-          const sv = seenSlits(8, [10, 30, 50, 70]).sort((a, b) => Math.hypot(a.x - S.charliePause.x, a.z - S.charliePause.z) - Math.hypot(b.x - S.charliePause.x, b.z - S.charliePause.z));
-          const s8 = sv.length >= 2 ? sv.slice(0, 2) : [P.nearC[0], P.second[0]];
-          s8.forEach((s, i) => stream(s, P.C, 4 + i * 9, 86, { act: () => 0.18, w: 1.4, src: 'slit:' + s.id }));
+          // camera pass: one slit, the horseshoe's east face (the one facing furthest east), which the chapter camera
+          // following the files is keyed to keep in frame round each of its sparse bursts (about 4, 31, 44, 76)
+          const s8 = P.horseshoe.slice().sort((a, b) => ((b.dir && b.dir.x) || 0) - ((a.dir && a.dir.x) || 0))[0];
+          stream(s8, P.C, 4, 86, { act: () => 0.18, w: 1.4, src: 'slit:' + s8.id });
           timing.push([8, '0-90', 'sparse fire']);
         } else if (id === 9) {
           const s = P.s9, a = s.m || s, tg = [{ x: S.himmerFall.x, z: S.himmerFall.z }];
           const by = S.himmerFall.y + 1.1;
-          for (const t0 of [12, 35, 78]) { const n = 3 + Math.floor(rng() * 3); gunPuff(t0, a); for (let i = 0; i < n; i++) round(t0 + i * 0.32, a, tg[0], 3, 1, { by, src: 'slit:' + s.id }); }
+          for (const t0 of [12, 35, 78]) { const n = 3 + Math.floor(rng() * 3); gunPuff(t0, a); for (let i = 0; i < n; i++) round(t0 + i * 0.32, a, tg[0], 3, 1, { by, fl: 0.06, fs: 1.5, src: 'slit:' + s.id }); }   // 60 ms flashes
           // Hunnicutt's single shots back (14.5, 15.3, 36.6, 37.2, 80.5) leave his own rifle (marines-c.js)
           const u = flat(P.hun, a), d = Math.min(u.l - 3, 10);   // 10 m toward the slit, in the chapter camera's frame (fix pass; was up to 26)
           blast(42.0, { x: P.hun.x + u.x * d, z: P.hun.z + u.z * d }, 'grenade');
           timing.push([9, '12, 35, 78', 'slit bursts at the crater area'], [9, '14.5, 15.3, 36.6, 37.2, 80.5', 'Hunnicutt fires back from his rifle (marines-c.js)'], [9, '42.0', 'grenade bursts (throw at 40.8), then quiet']);
         } else if (id === 11) {
-          // (the two single flashes on the far ridge at 12.0 and 14.0 are gone, fix pass: no one was there to fire them)
+          // camera pass: the two shots at 0630 that silenced the voice (DY p. 315: "after two shots, the voice stopped"),
+          // 12.0 and 14.0, single flashes with no tracer from the north-end slit the camera on 689's edge sees 385 m off
+          // (all three are in frame 8-18; the nearest the frame's centre), drawn as bright pinpoints
+          const n11 = P.slits.filter((s) => /^north/.test(s.id) && [12, 14].every((t) => FIRE.seenAt(s.m, 11, t)));
+          const s11 = n11.length ? n11[n11.length - 1] : null;
+          if (s11) for (const t of [12.0, 14.0]) { round(t, s11.m, { x: P.ridgeShot.x, z: P.ridgeShot.z }, 0.5, 1, { tracer: false, fs: 3.2, fl: 0.12, far: 1, src: 'slit:' + s11.id }); gunPuff(t, s11.m); }
+          if (s11) timing.push([11, '12.0, 14.0', 'two single shots from the north-end slit ' + s11.id + ' (the voice stops)']);
           const heli = FIRE.ch46At || ((t) => ({ x: P.lz.x, y: P.lz.y + 2.5 + 12 * smooth((t - 96) / 4), z: P.lz.z }));
           P.holes.forEach((h, i) => {
             for (let t = 92.8 + i * 0.4 + rng() * 0.3; t < 98; t += (1 / 3) * (0.75 + 0.5 * rng())) { const q = heli(t); round(t, h, q, 1.5, 1, { by: q.y, src: 'hole:' + i, hole: i }); }
@@ -505,7 +526,8 @@
         const fl = r.fl || 0.09;
         if (tau < fl) {
           const k = 1 - tau / fl, sz = r.fs * (0.6 + 0.4 * k) * (1 + 0.7 * night);
-          glow(r.ax, r.ay, r.az, cFl, (r.side ? 2.4 : 1.6) * Math.sqrt(k), sz);
+          // far (a slit seen across the valley, 300-470 m): a hard white pinpoint, the way distant fire looks
+          glow(r.ax, r.ay, r.az, cFl, (r.side ? 2.4 : 1.6) * Math.sqrt(k) * (r.far ? 3 : 1), sz);
           light(r.fs * k, r.ax, r.ay + 0.3, r.az);
         }
         if (r.tracer && nT < MAX_T) {

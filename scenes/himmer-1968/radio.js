@@ -373,7 +373,7 @@
         { ch: 4, label: 'msg_commit', from: 'cahill', via: ['cp'], to: 'relay', t0: 83.5, hold: 'end', run: true },
         // ch 5, 1230-1435: the 1320 call opens in this chapter's clock and holds at the relay to the end; the Army
         // sighting once per loop, no time; P1 at 1430 (HN)
-        { ch: 5, label: 'msg_army', from: 'army', to: 'cp', t0: 40, partial: 0.55, clock: null },
+        { ch: 5, label: 'msg_army', from: 'army', to: 'cp', t0: 52, partial: 0.55, clock: null },   // camera pass: was 40, the camera holds on it 50-62
         { ch: 5, label: 'msg_commit', from: 'cahill', via: ['cp'], to: 'relay', t0: at(5, '1320'), hold: 'end', run: true },
         { ch: 5, label: 'msg_move1st', from: 'cahill', to: 'himmer', t0: at(5, '1430') - 1.5, dt: 4.5 },
         // ch 6, 1435-1500: the 1320 call holds Cahill to the relay from the chapter's start with its clock running,

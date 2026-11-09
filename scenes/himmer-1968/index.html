@@ -906,23 +906,29 @@
         { t: 70, at: [-239, 322], lift: 1, az: 46, el: 38, dist: 48 },
         { t: 118, at: [-239, 322], lift: 1, az: 70, el: 36, dist: 48 }] } },
     { id: 4, key: 'squad', title: 'A squad, he says', date: '16 April', clock0: '1200', clock1: '1320', loop: 90, light: 'noon', lightHour: 12.5,
-      // the CP, then Charlie forming and moving off down the south-west slope with Cahill
+      // the CP, then Charlie forming and moving off down the south-west slope with Cahill; for 20-45 (camera pass) the
+      // camera turns to look over Charlie's backs from 689's south-west slope across the valley at the north end, 380 m
+      // off, where A is pinned: a north-end slit (fire.js) and A's answering fire are in frame, Charlie below
       view: { keys: [
         { t: 0, at: [-16, 6], lift: 2, az: 150, el: 26, dist: 66 },
-        { t: 40, at: [-30, 26], lift: 2, az: 165, el: 25, dist: 64 },
+        { t: 12, at: [-20, 12], lift: 2, az: 155, el: 26, dist: 66 },
+        { t: 20, at: [-254, 328], lift: 4, az: 38, el: 9, dist: 300 },
+        { t: 45, at: [-254, 328], lift: 4, az: 40, el: 9, dist: 300 },
+        { t: 54, at: [-34, 32], lift: 2, az: 165, el: 25, dist: 64 },
         { t: 90, at: [-50, 66], lift: 2, az: 172, el: 24, dist: 70 }] } },
     { id: 5, key: 'climb', title: 'The climb', date: '16 April', clock0: '1230', clock1: '1435', loop: 120, light: 'day', lightHour: 14.0,
-      // alongside Charlie on the south slope; from the east as the Army arc rises in the south-west (t 40); swings west to
-      // Rider's file on the far slope (t 68-86) and back to the pause, looking up, for Cahill's order (110)
+      // alongside Charlie on the south slope; over the column's shoulder at the north end, where A is pinned (camera
+      // pass, 22-46: a north-end slit fires, fire.js, and A's men answer); the Army arc rising in the south-west (52);
+      // swings west to Rider's file on the far slope (71-86) and back to the pause, looking up, for Cahill's order (110)
       view: { keys: [
         { t: 0, at: [-216, 366], lift: 1, az: 150, el: 62, dist: 46 },
         { t: 18, at: [-223, 382], lift: 1, az: 135, el: 56, dist: 50 },
-        { t: 30, at: [-232, 400], lift: 3, az: 92, el: 34, dist: 70 },
-        // final pass: the Army sighting (t 40) held at a distance where it reads: the mast on the far south-west hill
-        // and its line reaching out north-east toward the CP, side-on from the south-east (38-50)
-        { t: 36, at: [-878, 584], lift: 20, az: 146, el: 13, dist: 120 },
-        { t: 50, at: [-878, 584], lift: 20, az: 150, el: 13, dist: 116 },
-        { t: 62, at: [-254, 397], lift: 1, az: 125, el: 24, dist: 56 },
+        { t: 22, at: [-248, 334], lift: 2, az: 124, el: 17, dist: 125 },
+        { t: 46, at: [-248, 334], lift: 2, az: 128, el: 17, dist: 125 },
+        // final pass: the Army sighting (now t 52, radio.js) held at a distance where it reads: the mast on the far
+        // south-west hill and its line reaching out north-east toward the CP, side-on from the south-east (50-62)
+        { t: 50, at: [-878, 584], lift: 20, az: 146, el: 13, dist: 120 },
+        { t: 62, at: [-878, 584], lift: 20, az: 150, el: 13, dist: 116 },
         { t: 71, at: [-352, 354], lift: 1, az: 196, el: 26, dist: 64 },
         { t: 86, at: [-344, 353], lift: 1, az: 188, el: 26, dist: 64 },
         { t: 96, at: [-264, 390], lift: 1, az: 162, el: 24, dist: 44 },
@@ -955,8 +961,12 @@
       // low over Hunnicutt's crawl to his captain; then the files carrying their wounded down toward 689; ends on the
       // two men
       view: { keys: [
-        { t: 0, look: () => SITE.hunnicuttCrater, lift: 0.5, az: 168, el: 32, dist: 28 },
-        { t: 28, at: [-283, 401], lift: 0.5, az: 160, el: 34, dist: 24 },
+        // camera pass: tilted up (lift) so the horseshoe's east-face slit (arc9, fire.js) is in frame up the slope for
+        // its sparse bursts at about 4, 31 and 44 (and 76 in the wide view)
+        { t: 0, look: () => SITE.hunnicuttCrater, lift: 3.5, az: 168, el: 30, dist: 28 },
+        { t: 28, at: [-283, 401], lift: 3.5, az: 160, el: 32, dist: 24 },
+        { t: 42, at: [-281, 399], lift: 3.5, az: 155, el: 33, dist: 23 },
+        { t: 47, at: [-280, 398], lift: 3.5, az: 152, el: 34, dist: 22 },
         { t: 50, look: H, lift: 0.4, az: 150, el: 36, dist: 20 },
         { t: 58, look: H, lift: 0.4, az: 150, el: 36, dist: 20 },
         { t: 66, at: [-258, 390], lift: 1, az: 168, el: 40, dist: 62 },
@@ -966,8 +976,9 @@
     { id: 9, key: 'night', title: 'The night', date: '17 April', clock0: '0100', loop: 120, light: 'night', lightHour: 1.0, moon: true,
       // over the grass, looking down at Hunnicutt beside Himmer
       view: { keys: [
-        // fix pass: wider and turned so the slit (19 m WNW, up the slope) and the grenade's burst 10 m toward it are in
-        // frame with the two men: the slit's bursts at 12, 35 and 78, the throw at 40.8 and the burst at 42
+        // fix pass: wider and turned so the slit and the grenade's burst toward it are in frame with the two men: the
+        // slit's bursts at 12, 35 and 78, the throw at 40.8 and the burst at 42. Camera pass: the slit is arc7 (12 m
+        // NNW, up the slope, its mouth toward the crater; arc6, 19 m WNW, faces away, fire.js), in frame at all three
         { t: 0, at: [-281, 393.7], lift: 1, az: 106, el: 33, dist: 19 },
         { t: 28, at: [-281.5, 393.4], lift: 1.2, az: 98, el: 31, dist: 23 },
         { t: 48, at: [-281.5, 393.4], lift: 1.2, az: 96, el: 31, dist: 23 },
