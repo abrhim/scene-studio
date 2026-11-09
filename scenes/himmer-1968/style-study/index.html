@@ -1,0 +1,493 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Figure style study</title>
+<link rel="icon" href="data:,">
+<style>
+  html, body { margin: 0; background: #2a2620; overflow-x: hidden; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
+  canvas { display: block; }
+  #stage { position: relative; height: 100vh; overflow: hidden; }
+  .hud { position: absolute; font: 500 13px/1.2 system-ui, -apple-system, "Segoe UI", sans-serif; color: rgba(250, 240, 214, 0.75); pointer-events: none; text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45); }
+  #fps { right: 16px; top: 14px; text-align: right; font-variant-numeric: tabular-nums; }
+  #title { left: 24px; top: 18px; color: #fdf6e2; }
+  #title b { display: block; font: 600 22px/1.15 Georgia, 'Palatino Linotype', serif; letter-spacing: 0.02em; }
+  #title span { display: block; margin-top: 5px; font: italic 14px/1.3 Georgia, serif; color: #f0e2bc; max-width: 520px; }
+  #picker { position: absolute; left: 50%; top: 16px; transform: translateX(-50%); display: flex; gap: 6px; padding: 5px; border-radius: 999px; background: rgba(40, 34, 30, 0.62); border: 1px solid rgba(240, 212, 138, 0.45); }
+  #picker button { font: 600 13px/1 system-ui, -apple-system, "Segoe UI", sans-serif; color: #f6ecd2; background: transparent; border: 0; border-radius: 999px; padding: 8px 14px; cursor: pointer; letter-spacing: 0.02em; }
+  #picker button:hover { background: rgba(240, 212, 138, 0.16); }
+  #picker button[aria-pressed="true"] { background: #f0d48a; color: #2b241a; }
+  #picker button:focus-visible { outline: 2px solid #f0d48a; outline-offset: 2px; }
+  .lab { position: absolute; left: 0; top: 0; transform: translate(-50%, 0); text-align: center; pointer-events: none; white-space: nowrap; }
+  .lab .k { font: 700 12px/1 Georgia, serif; color: #f0d48a; letter-spacing: 0.22em; text-transform: uppercase; text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85); }
+  .lab .n { display: inline-block; margin-top: 6px; font: 600 20px/1.15 Georgia, 'Palatino Linotype', serif; color: #fdf6e2; padding: 6px 15px 5px; border-radius: 999px; background: rgba(40, 34, 30, 0.74); border: 1px solid rgba(240, 212, 138, 0.7); }
+  .lab .t { margin-top: 6px; font: 13px/1.35 system-ui, -apple-system, "Segoe UI", sans-serif; color: #f6ecd2; text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9), 0 0 8px rgba(0, 0, 0, 0.5); font-variant-numeric: tabular-nums; }
+  #keys { left: 24px; bottom: 16px; }
+  #refhint { right: 24px; bottom: 16px; }
+  /* reference looks: existing work to compare against, below the stage */
+  #refs { color: #efe4c8; padding: 36px 32px 56px; background: linear-gradient(#2a2620, #221f1a); }
+  #refs h2 { margin: 0; font: 600 24px/1.2 Georgia, 'Palatino Linotype', serif; color: #fdf6e2; letter-spacing: 0.02em; }
+  #refs > p { margin: 6px 0 22px; font: italic 14px/1.4 Georgia, serif; color: #cfc2a0; max-width: 760px; }
+  .strip { display: flex; flex-wrap: wrap; gap: 18px; }
+  .ref { width: 260px; margin: 0; }
+  .ref img { display: block; width: 260px; height: 195px; object-fit: cover; border-radius: 6px; background: #3a342b; outline: 1px solid rgba(240, 212, 138, 0.25); outline-offset: -1px; }
+  .ref figcaption { margin-top: 8px; font: 13px/1.35 system-ui, -apple-system, "Segoe UI", sans-serif; color: #e6dabb; }
+  .ref .num { font: 700 12px/1 Georgia, serif; color: #f0d48a; letter-spacing: 0.12em; margin-right: 6px; font-variant-numeric: tabular-nums; }
+  .ref .nm { font-weight: 600; color: #fdf6e2; }
+  .ref .lic { display: block; color: #b9ad8c; font-size: 12px; margin-top: 2px; }
+  .ref .near { display: inline-block; margin-top: 5px; font-size: 12px; color: #2b241a; background: #e2c983; border-radius: 999px; padding: 2px 9px; }
+  details.all { margin-top: 30px; }
+  details.all summary { cursor: pointer; font: 600 15px/1.3 system-ui, -apple-system, "Segoe UI", sans-serif; color: #f0d48a; }
+  details.all summary:focus-visible { outline: 2px solid #f0d48a; outline-offset: 3px; border-radius: 3px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 14px; margin-top: 16px; }
+  .grid figure { margin: 0; }
+  .grid img { display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border-radius: 4px; background: #3a342b; }
+  .grid figcaption { margin-top: 5px; font: 12px/1.3 system-ui, -apple-system, "Segoe UI", sans-serif; color: #d9cdae; }
+  .grid figcaption span { display: block; color: #a99d7e; font-size: 11px; }
+</style>
+</head>
+<body>
+<div id="stage">
+<div id="title" class="hud"><b>Figure style study</b><span>Company C, 1st Battalion, 9th Marines, spring 1968. One rifleman, and a captain with his radioman, in three directions.</span></div>
+<div id="picker" role="group" aria-label="Style">
+  <button data-v="all">All three <small>0</small></button>
+  <button data-v="a">A · Soft clay <small>1</small></button>
+  <button data-v="b">B · Cel and ink <small>2</small></button>
+  <button data-v="c">C · Refined low-poly <small>3</small></button>
+</div>
+<div id="fps" class="hud"></div>
+<div id="keys" class="hud">0–3 or ← → pick · space turntable · F face · R radio · V whole view</div>
+<div id="refhint" class="hud">Reference looks below ↓</div>
+</div>
+<section id="refs" aria-labelledby="refs-h">
+  <h2 id="refs-h">Reference looks</h2>
+  <p>Existing work, for comparison by eye. Look references only unless the licence says otherwise; nothing here ships in the scene. Notes in references/REFERENCES.md.</p>
+  <div class="strip" id="strip"></div>
+  <details class="all"><summary>All 25 references</summary><div class="grid" id="allrefs"></div></details>
+</section>
+<script>
+// Reference looks (references/REFERENCES.md, collected 8 Nov 2026): six to compare against, then all 25.
+(function () {
+  'use strict';
+  const T = '../references/thumbs/';
+  const ALL = [
+    ['01', 'vn-toystyle-jungle.jpg', 'Vietnam US soldier (toystyle)', 'None shown, look only'],
+    ['02', 'army-men-green.jpg', 'Army Men green soldier', 'CC-BY'],
+    ['03', 'toy-soldier-portrait.jpg', 'Toy soldier portrait', 'None shown, look only'],
+    ['04', 'toon-wehrmacht-friedrich.jpg', 'Toon machine-gunner "Friedrich"', 'Sketchfab Standard (paid)'],
+    ['05', 'cgt-usa-vietnam-minis.webp', 'USA Vietnam soldiers (9 figures)', 'Royalty-free (paid)'],
+    ['06', 'indiepixel-military.jpg', 'Military Characters Pack (indie-pixel)', 'Royalty-free, $4.99'],
+    ['07', 'chazb-vietnam-pack.jpg', 'Vietnam Soldier Pack (Chaz_B)', 'CC-BY-NC'],
+    ['08', 'woodhead-us-marine-m60.jpg', 'US Marine, Vietnam (M60 gunner)', 'CC-BY'],
+    ['09', 'punchbuggy-vn-soldier.jpg', 'Vietnam soldier (cartoon)', 'None shown, look only'],
+    ['10', 'viet-minh-1954.jpg', 'Low-poly Vietnamese soldier 1954', 'None shown; AI mesh'],
+    ['11', 'khaki-pith-helmet.jpg', 'Khaki soldier with pith helmet', 'CC-BY; AI mesh'],
+    ['12', 'grunokromer-red-army.jpg', 'Hand-painted rifleman (GrunoKromer)', 'None shown, look only'],
+    ['13', 'zack-ww2-allied.jpg', 'WW2 Allied soldier low poly', 'CC-BY'],
+    ['14', 'owsam-ww2-gi.jpg', 'Super low poly US WW2 GI', 'Royalty-free (paid)'],
+    ['15', 'army-man-pack-animated.jpg', 'Low-poly army man pack', 'Sketchfab Standard (paid)'],
+    ['16', 'lowpoly-military-squad.jpg', 'Low-poly military squad', 'Sketchfab Standard (paid)'],
+    ['17', 'lowpoly-soldier-free.jpg', 'Low poly soldier (free)', 'CC-BY'],
+    ['18', 'valiant-soldier.jpg', 'Valiant Soldier (Valiant Hearts style)', 'None shown, look only'],
+    ['19', 'synty-simple-military.png', 'SIMPLE Military (Synty)', 'Royalty-free (paid), no redistribution'],
+    ['20', 'synty-polygon-war.png', 'POLYGON War Pack (Synty)', 'Royalty-free (paid), no redistribution'],
+    ['21', 'kenney-blocky-characters.png', 'Blocky Characters (Kenney)', 'CC0'],
+    ['22', 'quaternius-character-soldier.png', 'Character Soldier (Quaternius)', 'CC0'],
+    ['23', 'ww2-cartoon-diorama.jpg', 'WW2 cartoon diorama', 'None shown, look only'],
+    ['24', 'advance-wars-2-diorama.jpg', 'Advance Wars 2 diorama', 'None shown, fan art'],
+    ['25', 'polygon-world-vietnam.jpg', 'Polygon World: Vietnam', 'CC-BY'],
+  ];
+  const FEATURED = [
+    ['01', 'Toy-style Vietnam GI', 'Nearest A, clay'],
+    ['06', 'indie-pixel military pack', 'Nearest A clay / C refined low-poly'],
+    ['04', 'Toon machine-gunner', 'Nearest A, clay (strong face)'],
+    ['12', 'Hand-painted khaki rifleman', 'The NVA look target'],
+    ['18', 'Valiant Hearts style soldier', 'Nearest B, cel and ink'],
+    ['23', 'Floating-slab diorama', 'Staging: the diorama base'],
+  ];
+  const byNum = Object.fromEntries(ALL.map((r) => [r[0], r]));
+  const fig = (r, name, cap, lazy) => {
+    const f = document.createElement('figure');
+    const img = document.createElement('img');
+    img.src = T + r[0] + '-' + r[1]; img.alt = name; img.loading = lazy ? 'lazy' : 'eager'; img.decoding = 'async';
+    const c = document.createElement('figcaption');
+    c.innerHTML = cap;
+    f.append(img, c);
+    return f;
+  };
+  const esc = (x) => x.replace(/&/g, '&amp;').replace(/</g, '&lt;');
+  const strip = document.getElementById('strip');
+  for (const [n, name, near] of FEATURED) {
+    const r = byNum[n], f = fig(r, name, '<span class="num">' + n + '</span><span class="nm">' + esc(name) + '</span><span class="lic">' + esc(r[3]) + '</span><span class="near">' + esc(near) + '</span>');
+    f.className = 'ref';
+    strip.appendChild(f);
+  }
+  const grid = document.getElementById('allrefs');
+  for (const r of ALL) grid.appendChild(fig(r, r[2], r[0] + ' · ' + esc(r[2]) + '<span>' + esc(r[3]) + '</span>', true));
+})();
+</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="figkit.js"></script>
+<script src="style-a.js"></script>
+<script src="style-b.js"></script>
+<script src="style-c.js"></script>
+<script>
+// The style study page. ?view=all|a|b|c  ?shot=view|face|cmd  ?spin=0  ?yaw=<radians, the trio's turn>  ?t0=<seconds>
+(function () {
+  'use strict';
+  const params = new URLSearchParams(location.search);
+  const FK = window.FK, V = FK.V, lin = FK.lin, TAU = Math.PI * 2, smooth = FK.smooth;
+  const ORDER = ['a', 'b', 'c'];
+  const T0 = Number(params.get('t0') || 0);
+  let spin = params.get('spin') !== '0';
+  const yaw0 = Number(params.get('yaw') || 0);
+  let view = params.get('view') || 'all', shot = params.get('shot') || 'view';
+
+  // ---------- renderer, as the template: ACES, sRGB, warm key, warm bounce ----------
+  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setPixelRatio(Math.min(2, devicePixelRatio));
+  renderer.setSize(innerWidth, innerHeight);
+  renderer.outputEncoding = THREE.sRGBEncoding;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.1;
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  document.getElementById('stage').appendChild(renderer.domElement);
+  const scene = new THREE.Scene();
+  {
+    const c = document.createElement('canvas'); c.width = 4; c.height = 512;
+    const g = c.getContext('2d'), gr = g.createLinearGradient(0, 0, 0, 512);
+    gr.addColorStop(0, '#5f93c9'); gr.addColorStop(0.3, '#a9c7df'); gr.addColorStop(0.55, '#ecd9b4'); gr.addColorStop(1, '#e6c99a');
+    g.fillStyle = gr; g.fillRect(0, 0, 4, 512);
+    const tex = new THREE.CanvasTexture(c); tex.encoding = THREE.sRGBEncoding;
+    scene.background = tex;
+  }
+  scene.fog = new THREE.Fog(lin(0xe2cfa8), 30, 90);
+  const camera = new THREE.PerspectiveCamera(30, innerWidth / innerHeight, 0.1, 200);
+
+  // warm afternoon: the sun low in the south-west, behind the camera's left shoulder
+  const hemi = new THREE.HemisphereLight(0xdfe9ff, 0xc9b07a, 0.68);
+  scene.add(hemi);
+  const sun = new THREE.DirectionalLight(0xffe6c2, 1.45);
+  sun.position.set(-9, 10, 11);
+  sun.castShadow = true;
+  sun.shadow.mapSize.set(4096, 2048);
+  Object.assign(sun.shadow.camera, { left: -11, right: 11, top: 6, bottom: -6, near: 1, far: 50 });
+  sun.shadow.bias = -0.0004;
+  sun.shadow.normalBias = 0.02;
+  scene.add(sun, sun.target);
+  const fill = new THREE.DirectionalLight(0xfff6ea, 0.25);
+  fill.position.set(6, 6, 30);
+  scene.add(fill);
+
+  // ---------- the three patches ----------
+  const SPACING = 5.7, R = 2.45;
+  const heightAt = (x, z) => -0.13 * z + 0.035 * Math.sin(1.7 * x + 0.4) * Math.cos(1.3 * z) + 0.05 * Math.max(0, -z - 1.2) * Math.max(0, -z - 1.2);
+  // the trio: [x, z, yaw] in patch space
+  const SPOTS = { rifleman: [-1.05, 0.35, 0.32], captain: [0.42, 0.05, 0.22], radioman: [1.22, -0.5, -0.55] };
+  const SEEDS = { rifleman: 1, captain: 2, radioman: 3 };
+  const patches = {};
+
+  function blobTex() {
+    const c = document.createElement('canvas'); c.width = c.height = 64;
+    const g = c.getContext('2d'), gr = g.createRadialGradient(32, 32, 2, 32, 32, 31);
+    gr.addColorStop(0, 'rgba(50,38,22,0.45)'); gr.addColorStop(1, 'rgba(50,38,22,0)');
+    g.fillStyle = gr; g.fillRect(0, 0, 64, 64);
+    return new THREE.CanvasTexture(c);
+  }
+  const BLOB = new THREE.MeshBasicMaterial({ map: blobTex(), transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 });
+
+  function buildGround(S, mats) {
+    // a disc of rings, sloping up toward the back, with a skirt of earth down the side (a diorama base)
+    const rings = S.groundRings || 14, segs = S.groundSegs || 48, pos = [], tris = [];
+    const pt = (r, a) => { const x = Math.sin(a) * r, z = Math.cos(a) * r; return [x, heightAt(x, z), z]; };
+    const grid = [];
+    for (let i = 0; i <= rings; i++) {
+      const row = [], r = (i / rings) * R;
+      for (let k = 0; k < segs; k++) {
+        const a = (k / segs) * TAU + (i % 2) * (TAU / segs / 2);
+        let [x, y, z] = pt(r, a);
+        if (S.groundJitter && i > 0 && i < rings) { x += (FK.hash(i, k, 1) - 0.5) * S.groundJitter; z += (FK.hash(i, k, 2) - 0.5) * S.groundJitter; y = heightAt(x, z) + (FK.hash(i, k, 3) - 0.5) * S.groundJitter * 0.3; }
+        row.push(pos.length / 3); pos.push(x, y, z);
+      }
+      grid.push(row);
+    }
+    for (let i = 0; i < rings; i++) for (let k = 0; k < segs; k++) {
+      const a = grid[i][k], b = grid[i][(k + 1) % segs], c = grid[i + 1][k], d = grid[i + 1][(k + 1) % segs];
+      if (i % 2 === 0) { tris.push(a, c, d, a, d, b); } else { tris.push(a, c, b, b, c, d); }
+    }
+    // skirt
+    const top = grid[rings], base = [];
+    for (let k = 0; k < segs; k++) { const x = pos[top[k] * 3], z = pos[top[k] * 3 + 2]; base.push(pos.length / 3); pos.push(x * 1.04, -0.45, z * 1.04); }
+    for (let k = 0; k < segs; k++) { const a = top[k], b = top[(k + 1) % segs], c = base[k], d = base[(k + 1) % segs]; tris.push(a, c, d, a, d, b); }
+    let g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    g.setIndex(tris);
+    g.computeVertexNormals();
+    if (S.groundFaceted) g = g.toNonIndexed();
+    FK.paint(g, (x, y, z) => (y < heightAt(x, z) - 0.04 ? S.groundSide(y) : S.groundColor(x, z)), !!S.groundFaceted);
+    const m = new THREE.Mesh(g, mats.ground);
+    m.receiveShadow = true;
+    return m;
+  }
+
+  function grassSpots(seed) {
+    const rnd = FK.rand(seed), clumps = [];
+    // tall elephant grass in a horseshoe behind and beside the trio, short tufts in front
+    for (let i = 0; i < 26; i++) {
+      const a = Math.PI * 0.55 + (i / 25) * Math.PI * 0.9 + (rnd() - 0.5) * 0.1, r = R * (0.72 + rnd() * 0.24);
+      const x = Math.sin(a) * r, z = Math.cos(a) * r;
+      const back = smooth((-z + 0.4) / 2.2);
+      clumps.push({ x, z, y: heightAt(x, z), h: 0.9 + back * 1.35 + rnd() * 0.45, n: 1, seed: rnd() * 1000, tall: true });
+    }
+    for (let i = 0; i < 22; i++) {
+      const a = rnd() * TAU, r = R * (0.25 + Math.sqrt(rnd()) * 0.72), x = Math.sin(a) * r, z = Math.cos(a) * r;
+      let near = false;
+      for (const k in SPOTS) if (Math.hypot(SPOTS[k][0] - x, SPOTS[k][1] - z) < 0.45) near = true;
+      if (near) continue;
+      clumps.push({ x, z, y: heightAt(x, z), h: 0.22 + rnd() * 0.3, seed: rnd() * 1000, tall: false });
+    }
+    return clumps;
+  }
+
+  const figures = [];
+  const UP = V(0, 1, 0);
+  for (let pi = 0; pi < ORDER.length; pi++) {
+    const key = ORDER[pi], S = window.STYLES[key], mats = S.materials();
+    const group = new THREE.Group();
+    group.position.x = (pi - 1) * SPACING;
+    scene.add(group);
+    group.add(buildGround(S, mats));
+    // grass, one mesh per patch
+    const blades = [];
+    for (const c of grassSpots(1000 + pi * 17)) S.grass(c, blades, FK.rand(Math.floor(c.seed * 13)));
+    const gg = FK.concatH(blades);
+    gg.computeBoundingSphere();
+    const grass = new THREE.Mesh(gg, mats.grass);
+    grass.castShadow = true; grass.receiveShadow = true;
+    group.add(grass);
+    if (mats.grassOutline) group.add(mats.grassOutline(gg));
+    let grassTris = gg.attributes.position.count / 3;
+    const trio = new THREE.Group();
+    group.add(trio);
+    const P = { key, S, group, trio, figs: {}, grassTris };
+    for (const kind of ['rifleman', 'captain', 'radioman']) {
+      const F = S.build(kind, mats);
+      F.kind = kind; F.seed = SEEDS[kind] + pi * 0.37;
+      F.spot = SPOTS[kind];
+      F.chest0 = F.asm.j.chest.position.clone();
+      F.pelvis0 = F.asm.j.pelvis.position.clone();
+      F.blob = new THREE.Mesh(new THREE.PlaneGeometry(0.9, 0.75).rotateX(-Math.PI / 2), BLOB);
+      F.blob.renderOrder = 1;
+      group.add(F.blob);
+      group.add(F.asm.root);
+      P.figs[kind] = F;
+      figures.push(F);
+    }
+    patches[key] = P;
+  }
+
+  // ---------- idle animation: breathing, weight shift, glances, blinks; the radioman lifts the handset ----------
+  const tv = V(0, 0, 0), tv2 = V(0, 0, 0), tv3 = V(0, 0, 0), pole = V(0, 0, 0), qa = new THREE.Quaternion(), qb = new THREE.Quaternion();
+  const cordPts = [], antPts = [];
+  for (let i = 0; i <= 16; i++) { cordPts.push(V(0, 0, 0)); antPts.push(V(0, 0, 0)); }
+  const toChest = (F, v) => tv3.copy(v).sub(F.asm.sk.bind.chest);
+  function animate(F, t) {
+    const j = F.asm.j, s = F.seed, A = F.asm;
+    const br = Math.sin((t * TAU) / 4.4 + s * 2.1);
+    j.chest.position.copy(F.chest0); j.chest.position.y += 0.004 * br;
+    j.chest.rotation.set(-0.012 * br + (F.lean || 0), 0.03 * Math.sin(t * 0.21 + s), 0);
+    const sway = 0.016 * Math.sin(t * 0.37 + s * 2.3);
+    j.pelvis.position.copy(F.pelvis0); j.pelvis.position.x += sway * 0.6;
+    j.pelvis.rotation.z = sway;
+    j.thL.rotation.z = j.thR.rotation.z = -sway;
+    j.head.rotation.set(0.04 + 0.02 * Math.sin(t * 0.5 + s), 0, 0.02 * Math.sin(t * 0.31 + s));
+    if (j.eyes) j.eyes.scale.y = FK.blink(t, s);
+    const b = A.sk.bind;
+    if (F.kind === 'rifleman') {
+      j.head.rotation.y = FK.glance(t, s, 9, 0.55);
+      j.head.rotation.x += 0.05 * FK.glance(t + 3, s + 1, 9, 1) ;
+      FK.solveArm(A, 'R', toChest(F, F.rifle.R), pole.set(-1, -0.6, -0.5));
+      FK.solveArm(A, 'L', toChest(F, F.rifle.L), pole.set(0.9, -1, -0.1));
+    } else if (F.kind === 'captain') {
+      const map = 1 - FK.cyc(t + 1, 15, 5.5, 13.5, 1.0);      // looking down at the map
+      const point = FK.cyc(t + 1, 15, 7.5, 11.5, 1.0);        // pointing out the ground ahead
+      const toRadio = FK.cyc(t + 1, 15, 12, 14.6, 0.7);
+      j.head.rotation.x += 0.32 * map - 0.04 * point;
+      j.head.rotation.y = -0.38 * point + 0.55 * toRadio + 0.12 * map;
+      F.lean = 0.03 * map;
+      // left hand holds the map in front of the belt
+      FK.solveArm(A, 'L', F.mapAt, pole.set(1, -0.7, -0.4));
+      // right hand: at the side, then pointing forward and to his right
+      tv.copy(F.restR).lerp(tv2.set(-F.reach * 0.55, F.shY + 0.06, F.reach * 0.78), point);
+      FK.solveArm(A, 'R', tv, pole.set(-1, -0.4 - 0.6 * (1 - point), -0.3));
+      if (F.map) F.map.position.copy(F.mapAt).add(F.mapOff);
+    } else {
+      const k = FK.cyc(t, 12, 2.5, 8.5, 1.1);                 // handset up at the ear
+      j.head.rotation.z += 0.12 * k;
+      j.head.rotation.y = -0.15 * k + (1 - k) * FK.glance(t, s, 8, 0.45);
+      j.head.rotation.x += 0.08 * k;
+      // right hand: from the chest to the ear, swinging out a little on the way
+      tv.copy(F.handsetLow).lerp(F.handsetUp, k);
+      tv.x -= 0.07 * Math.sin(Math.PI * k);
+      FK.solveArm(A, 'R', tv, pole.set(-1, -0.55 + 0.3 * k, -0.25 - 0.3 * k));
+      // left thumb hooked in the shoulder strap
+      FK.solveArm(A, 'L', F.strapL, pole.set(1, -1, -0.2));
+      // the handset follows the right hand (wrist) and turns upright at the ear
+      if (F.handset) {
+        // in the palm: a little past the wrist along the forearm, then against the cheek at the top
+        F.handset.position.copy(tv).addScaledVector(A.handDir.R, F.palm || 0.05);
+        F.handset.position.z += 0.02 * (1 - k);
+        qa.setFromEuler(F.handsetQLow); qb.setFromEuler(F.handsetQUp);
+        F.handset.quaternion.copy(qa).slerp(qb, k);
+        // the cord: from the radio's side to the handset's foot, sagging
+        if (F.cord) {
+          const from = F.cordFrom, to = tv2.set(0, -F.handsetLen * 0.5, 0).applyQuaternion(F.handset.quaternion).add(F.handset.position);
+          const n = F.cordN;
+          for (let i = 0; i <= n; i++) {
+            const u = i / n;
+            cordPts[i].copy(from).lerp(to, u);
+            cordPts[i].y -= 0.16 * Math.sin(Math.PI * u) * (1 - 0.4 * k);
+            cordPts[i].z += 0.05 * Math.sin(Math.PI * u);
+          }
+          F.cord.userData.set(cordPts);
+        }
+      }
+      // the whip antenna sways from its base
+      if (F.antenna) {
+        const n = F.antN, L = F.antLen, base = F.antBase;
+        const sx = 0.05 * Math.sin(t * 1.3 + 0.4) + 0.02 * Math.sin(t * 3.1), sz = 0.035 * Math.sin(t * 0.9 + 1.2);
+        for (let i = 0; i <= n; i++) {
+          const u = i / n;
+          antPts[i].set(base.x + (F.antLean[0] + sx) * u * u * L, base.y + u * L * 0.985, base.z + (F.antLean[1] + sz) * u * u * L);
+        }
+        F.antenna.userData.set(antPts);
+      }
+    }
+  }
+
+  // ---------- placement and the turntable ----------
+  function place(t) {
+    const turn = yaw0 + (spin ? turnClock : 0) * 0.13;
+    for (const key of ORDER) {
+      const P = patches[key];
+      for (const kind in P.figs) {
+        const F = P.figs[kind], [x, z, y] = F.spot, c = Math.cos(turn), sn = Math.sin(turn);
+        const wx = x * c + z * sn, wz = -x * sn + z * c;
+        const gy = heightAt(wx, wz);
+        F.asm.root.position.set(wx, gy, wz);
+        F.asm.root.rotation.y = y + turn;
+        F.blob.position.set(wx, gy + 0.01, wz);
+        F.blob.rotation.y = y + turn;
+      }
+    }
+  }
+
+  // ---------- labels and the picker ----------
+  const fmt = (n) => n.toLocaleString('en-US');
+  for (const key of ORDER) {
+    const P = patches[key], S = P.S, d = document.createElement('div');
+    d.className = 'lab';
+    const f = P.figs;
+    d.innerHTML = '<div class="k">' + S.letter + '</div><div class="n">' + S.name + '</div><div class="t">Rifleman <b>' + fmt(f.rifleman.asm.tris) + '</b> triangles' + (S.outline ? ' (+ ink hull)' : '') +
+      ' · captain ' + fmt(f.captain.asm.tris) + ' · radioman ' + fmt(f.radioman.asm.tris) + '</div><div class="t" style="opacity:.8">' + S.blurb + '</div>';
+    document.getElementById('stage').appendChild(d);
+    P.label = d;
+  }
+  let camT = -1;
+  const buttons = [...document.querySelectorAll('#picker button')];
+  function setView(v) {
+    view = v;
+    for (const b of buttons) b.setAttribute('aria-pressed', String(b.dataset.v === v));
+    if (v === 'all') shot = 'view';
+    camT = -1;
+  }
+  buttons.forEach((b) => b.addEventListener('click', () => setView(b.dataset.v)));
+  const VIEWS = ['all', 'a', 'b', 'c'];
+  addEventListener('keydown', (e) => {
+    if (e.key >= '0' && e.key <= '3') setView(VIEWS[Number(e.key)]);
+    else if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') setView(VIEWS[(VIEWS.indexOf(view) + (e.key === 'ArrowRight' ? 1 : 3)) % 4]);
+    else if (e.key === ' ') { spin = !spin; e.preventDefault(); }
+    else if (e.key === 'f' || e.key === 'F') { if (view === 'all') setView('a'); shot = 'face'; camT = -1; }
+    else if (e.key === 'r' || e.key === 'R') { if (view === 'all') setView('a'); shot = 'cmd'; camT = -1; }
+    else if (e.key === 'v' || e.key === 'V') { shot = 'view'; camT = -1; }
+  });
+  setView(view);
+
+  // ---------- camera ----------
+  const camPos = V(0, 0, 0), camLook = V(0, 0, 0), wantPos = V(0, 0, 0), wantLook = V(0, 0, 0);
+  const headW = V(0, 0, 0);
+  function cameraWant() {
+    if (params.has('cam')) { const c = params.get('cam').split(',').map(Number); wantPos.set(c[0], c[1], c[2]); wantLook.set(c[3], c[4], c[5]); camera.fov = Number(params.get('fov') || 30); return; }
+    if (view === 'all') {
+      camera.fov = 30;
+      const aspect = innerWidth / innerHeight, halfW = SPACING + R + 0.6, d = halfW / (Math.tan((camera.fov * Math.PI) / 360) * aspect);
+      wantPos.set(0, 3.2, Math.max(d, 13)); wantLook.set(0, 1.35, 0);
+      return;
+    }
+    const P = patches[view], cx = P.group.position.x;
+    if (shot === 'face') {
+      const F = P.figs.rifleman;
+      F.asm.j.head.getWorldPosition(headW);
+      const yaw = F.asm.root.rotation.y + 0.72, sk = F.asm.sk.s;
+      camera.fov = 20;
+      headW.y += sk.eyeY - sk.neck;
+      wantLook.copy(headW); wantLook.y -= 0.14;
+      wantPos.set(headW.x + Math.sin(yaw) * 2.5, headW.y + 0.08, headW.z + Math.cos(yaw) * 2.5);
+    } else if (shot === 'cmd') {
+      const a = P.figs.captain.asm.root.position, b = P.figs.radioman.asm.root.position;
+      camera.fov = 26;
+      wantLook.set(cx + (a.x + b.x) / 2, 1.0 + (a.y + b.y) / 2, (a.z + b.z) / 2);
+      wantLook.y += 0.12;
+      wantPos.set(wantLook.x - 0.3, wantLook.y + 0.45, wantLook.z + 5.2);
+    } else {
+      camera.fov = 30;
+      wantPos.set(cx + 0.5, 1.95, 7.6); wantLook.set(cx + 0.05, 0.95, 0);
+    }
+  }
+
+  // ---------- frame loop (pure function of the clock; ?t0 picks the moment) ----------
+  const fpsEl = document.getElementById('fps');
+  let last = performance.now(), turnClock = 0, fpsFrames = 0, fpsTime = 0;
+  const labPos = V(0, 0, 0);
+  function frame() {
+    const now = performance.now(), dt = Math.min(0.1, (now - last) / 1000);
+    last = now;
+    const t = T0 + now / 1000;
+    if (spin) turnClock += dt;
+    FK.time.value = t;
+    place(t);
+    for (const F of figures) animate(F, t);
+    scene.updateMatrixWorld();
+    cameraWant();
+    if (camT < 0) { camPos.copy(wantPos); camLook.copy(wantLook); camT = 0; }
+    else { const k = 1 - Math.exp(-dt * 4); camPos.lerp(wantPos, k); camLook.lerp(wantLook, k); }
+    camera.position.copy(camPos); camera.lookAt(camLook);
+    camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();
+    for (const key of ORDER) {
+      const P = patches[key], vis = view === 'all' || view === key;
+      P.group.visible = vis || shot === 'view';
+      P.label.style.opacity = vis && shot === 'view' ? '1' : '0';
+      labPos.set(P.group.position.x, -0.5, R + 0.2).project(camera);
+      P.label.style.left = ((labPos.x + 1) / 2) * innerWidth + 'px';
+      P.label.style.top = Math.min(innerHeight - 110, ((1 - labPos.y) / 2) * innerHeight + 8) + 'px';
+    }
+    renderer.render(scene, camera);
+    fpsFrames++; fpsTime += dt;
+    if (fpsTime >= 0.5 || !window.__statsOnce) {
+      window.__statsOnce = true;
+      const info = renderer.info.render;
+      fpsEl.textContent = Math.round(fpsFrames / Math.max(fpsTime, 0.001)) + ' fps · ' + info.calls + ' draws · ' + (info.triangles / 1000).toFixed(1) + 'k tris';
+      fpsFrames = 0; fpsTime = 0;
+    }
+    requestAnimationFrame(frame);
+  }
+  addEventListener('resize', () => renderer.setSize(innerWidth, innerHeight));
+  window.__patches = patches;
+  window.__ready = true;
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

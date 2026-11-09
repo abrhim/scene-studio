@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Scale study</title>
+<style>
+html,body{margin:0;height:100%;overflow:hidden;background:#cfd6d6}
+canvas{display:block}
+#hud{position:fixed;left:16px;top:14px;font:600 20px/1.35 ui-monospace,Menlo,monospace;color:#1d1a12;background:rgba(255,250,235,.8);padding:10px 14px;border-radius:8px;white-space:pre}
+.lb{position:fixed;left:0;top:0;font:700 18px/1 system-ui,sans-serif;color:#fff;background:rgba(150,20,20,.85);padding:4px 8px;border-radius:5px;transform:translate(-50%,-140%);white-space:nowrap;pointer-events:none}
+.lb.d{background:rgba(30,30,30,.82);transform:translate(-50%,-50%)}
+</style></head><body>
+<div id="hud"></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+window.__ready = false;
+const Q = new URLSearchParams(location.search);
+const S = +(Q.get('s') || 1), VX = +(Q.get('vx') || 1.3), VIEW = Q.get('view') || 'home';
+const BASE = 450, MX = 29.63, MY = 30.71;
+const P689 = [313, 262], P600 = [284, 298.5];
+const CX = (P689[0] + P600[0]) / 2, CY = (P689[1] + P600[1]) / 2;
+const C0 = Math.round(CX - 44), C1 = C0 + 87, R0 = Math.round(CY - 36), R1 = R0 + 72 + (VIEW === 'charlie' ? 40 : 0); // charlie looks 60 m behind C, so the tile runs further south
+
+fetch('../sources/dem-grid.json').then(r => r.json()).then(go);
+
+function go(dem) {
+  const W = dem.width, D = dem.data;
+  const px = (c, r) => D[Math.max(0, Math.min(dem.height - 1, r)) * W + Math.max(0, Math.min(W - 1, c))];
+  // height in real metres at real-metre offset (xm east, zm south) from the crop centre
+  function hAt(xm, zm) {
+    const c = CX + xm / MX, r = CY + zm / MY, c0 = Math.floor(c), r0 = Math.floor(r), fc = c - c0, fr = r - r0;
+    return (px(c0, r0) * (1 - fc) + px(c0 + 1, r0) * fc) * (1 - fr) + (px(c0, r0 + 1) * (1 - fc) + px(c0 + 1, r0 + 1) * fc) * fr;
+  }
+  const yOf = h => (h - BASE) / S * VX;
+  const gy = (x, z) => yOf(hAt(x * S, z * S));   // scene x,z -> ground y
+
+  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setSize(innerWidth, innerHeight); renderer.setPixelRatio(1);
+  renderer.outputEncoding = THREE.sRGBEncoding;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.12;
+  document.body.appendChild(renderer.domElement);
+  const scene = new THREE.Scene(); scene.background = new THREE.Color(0xc9d3d8);
+  const cam = new THREE.PerspectiveCamera(40, innerWidth / innerHeight, VIEW === 'charlie' || VIEW === 'mid' ? 0.05 : 2, 12000);
+  scene.add(new THREE.HemisphereLight(0xdfe9ff, 0xc9b07a, 0.7));
+  const sun = new THREE.DirectionalLight(0xfff1d6, 1.35); sun.position.set(-600, 900, 500); scene.add(sun);
+  scene.add(new THREE.DirectionalLight(0xfff6ea, 0.25).translateX(500).translateY(300));
+
+  // terrain, flat shaded (non-indexed), coloured by height
+  const nc = C1 - C0 + 1, nr = R1 - R0 + 1;
+  const V = (c, r) => { const xm = (c - CX) * MX, zm = (r - CY) * MY; return [xm / S, yOf(px(c, r)), zm / S, px(c, r)]; };
+  const pos = [], col = [];
+  const lo = new THREE.Color(0x56693a).convertSRGBToLinear(), hi = new THREE.Color(0xc4b27c).convertSRGBToLinear(), tmp = new THREE.Color();
+  for (let r = R0; r < R1; r++) for (let c = C0; c < C1; c++) {
+    const a = V(c, r), b = V(c + 1, r), d = V(c, r + 1), e = V(c + 1, r + 1);
+    for (const t of (((c + r) & 1) ? [[a, d, b], [b, d, e]] : [[a, d, e], [a, e, b]])) {
+      const m = (t[0][3] + t[1][3] + t[2][3]) / 3;
+      tmp.copy(lo).lerp(hi, Math.min(1, Math.max(0, (m - 470) / 230)));
+      for (const v of t) { pos.push(v[0], v[1], v[2]); col.push(tmp.r, tmp.g, tmp.b); }
+    }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+  g.computeVertexNormals();
+  scene.add(new THREE.Mesh(g, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, metalness: 0 })));
+
+  // summits (real metres from centre)
+  const sm = p => [(p[0] - CX) * MX, (p[1] - CY) * MY];
+  const s689 = sm(P689), s600 = sm(P600);
+  const h689 = hAt(...s689), h600 = hAt(...s600);
+  const T689 = new THREE.Vector3(s689[0] / S, yOf(h689), s689[1] / S), T600 = new THREE.Vector3(s600[0] / S, yOf(h600), s600[1] / S);
+  const distM = T689.distanceTo(new THREE.Vector3(T600.x, T689.y, T600.z)); // horizontal, scene metres
+  const redMat = new THREE.MeshStandardMaterial({ color: new THREE.Color(0xd01818).convertSRGBToLinear(), roughness: .6 });
+  for (const T of [T689, T600]) { const m = new THREE.Mesh(new THREE.CylinderGeometry(.3, .3, 2, 12), redMat); m.position.set(T.x, T.y + 1, T.z); scene.add(m); }
+  const lg = new THREE.BufferGeometry().setFromPoints([T689.clone().setY(T689.y + 2), T600.clone().setY(T600.y + 2)]);
+  scene.add(new THREE.Line(lg, new THREE.LineBasicMaterial({ color: 0xffffff })));
+
+  // south slope: from the 689 summit due south until 100 m lower (real), and line of C Company 50 m below
+  const marchDown = drop => { let d = 0; while (hAt(s600[0], s600[1] + d) > h600 - drop && d < 3000) d += 1; return d; };
+  const slopeReal = marchDown(100), dC = marchDown(50);
+  const slopeScene = slopeReal / S;
+
+  // figures, true size
+  const figs = [];
+  const place = (x, z) => figs.push([x, gy(x, z), z]);
+  const ax = s689[0] / S, az = s689[1] / S, bx = s600[0] / S, bz = s600[1] / S;
+  let nx = s600[0], bestH = -1; for (let o = -60; o <= 60; o += 5) { const hh = hAt(s600[0] + o, s600[1] - 120); if (hh > bestH) { bestH = hh; nx = s600[0] + o; } }
+  const SP = 1.5;
+  const rankLine = (cx, cz, n, ranks, alongX) => {
+    const per = Math.ceil(n / ranks); let k = 0;
+    for (let rk = 0; rk < ranks; rk++) for (let i = 0; i < per && k < n; i++, k++) {
+      const u = (i - (per - 1) / 2) * SP, v = (rk - (ranks - 1) / 2) * SP;
+      alongX ? place(cx + u, cz + v) : place(cx + v, cz + u);
+    }
+  };
+  rankLine(nx / S, (s600[1] - 120) / S, 45, 2, true);   // A: north end of the ridge, battle hill (610)
+  rankLine(bx, bz + dC / S, 40, 1, true);       // C: south slope, 50 m below the 610 summit
+  rankLine(bx + 150 / S, bz, 50, 2, false);     // D: east side
+  rankLine(ax, az, 8, 2, true);                 // CP
+  for (let i = 0; i < 30; i++) { const a = i / 30 * Math.PI * 2; place(ax + Math.cos(a) * 150 / S, az + Math.sin(a) * 150 / S); } // perimeter
+  const fg = new THREE.BoxGeometry(.5, 1.7, .3); fg.translate(0, .85, 0);
+  const im = new THREE.InstancedMesh(fg, new THREE.MeshStandardMaterial({ color: new THREE.Color(0x3a4a14).convertSRGBToLinear(), roughness: 1 }), figs.length);
+  const M = new THREE.Matrix4(); figs.forEach((f, i) => { M.makeTranslation(f[0], f[1], f[2]); im.setMatrixAt(i, M); });
+  scene.add(im);
+
+
+  // seeded random
+  let seed = 12345; const rnd = () => { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+  // craters: 30 dark draped discs, 10-20 m real across, on the battle hill crest
+  const cpos = [], craterPos = [];
+  for (let i = 0; i < 30; i++) {
+    const a = rnd() * 6.283, d = Math.sqrt(rnd()) * 90, cxm = s600[0] + Math.cos(a) * d, czm = s600[1] + Math.sin(a) * d, R = (5 + rnd() * 5) / S;
+    const cxs = cxm / S, czs = czm / S, SEG = 20;
+    cpos.push(cxs, gy(cxs, czs) - .05, czs);
+    for (let k = 0; k < SEG; k++) for (const [r0, r1] of [[0, .5], [.5, 1]]) {
+      const a0 = k / SEG * 6.283, a1 = (k + 1) / SEG * 6.283;
+      const pt = (rr, aa) => { const x = cxs + Math.cos(aa) * R * rr, z = czs + Math.sin(aa) * R * rr; return [x, gy(x, z) + .12 + (VIEW === 'charlie' ? 0 : .1 * S / 3), z]; };
+      const q = r0 === 0 ? [pt(0, a0), pt(.5, a0), pt(.5, a1)] : [pt(.5, a0), pt(1, a0), pt(1, a1), pt(.5, a0), pt(1, a1), pt(.5, a1)];
+      q.forEach(v => { craterPos.push(...v); });
+    }
+  }
+  const cg = new THREE.BufferGeometry(); cg.setAttribute('position', new THREE.Float32BufferAttribute(craterPos, 3)); cg.computeVertexNormals();
+  scene.add(new THREE.Mesh(cg, new THREE.MeshStandardMaterial({ color: new THREE.Color(0x2e271d).convertSRGBToLinear(), roughness: 1, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 })));
+
+  // grass: crossed tapered blades, true size 1.5-2 m (1.5 m near figures)
+  const figCell = new Map(); const ck = (x, z) => Math.floor(x / 3) + ',' + Math.floor(z / 3);
+  figs.forEach(f => { for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) figCell.set(Math.floor(f[0] / 3) + i + ',' + (Math.floor(f[2] / 3) + j), 1); });
+  const spots = [];
+  const disc = (cxm, czm, Rm, dens) => { const n = Math.round(Math.PI * Rm * Rm / dens); for (let i = 0; i < n; i++) { const a = rnd() * 6.283, d = Math.sqrt(rnd()) * Rm; spots.push((cxm + Math.cos(a) * d) / S, (czm + Math.sin(a) * d) / S); } };
+  disc(s600[0], s600[1], 250, 1.5); disc(s689[0], s689[1], 150, 1.5);
+  for (let i = 0; i < 15000; i++) spots.push(((rnd() - .5) * 87 * MX) / S, ((rnd() - .5) * 72 * MY) / S);
+  const NB = spots.length / 2;
+  const bgeo = new THREE.BufferGeometry();
+  bgeo.setAttribute('position', new THREE.Float32BufferAttribute([-.14, 0, 0, .14, 0, 0, 0, 1, 0, 0, 0, -.14, 0, 0, .14, 0, 1, 0], 3));
+  bgeo.computeVertexNormals();
+  const gm = new THREE.InstancedMesh(bgeo, new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1, side: THREE.DoubleSide }), NB);
+  const Mx = new THREE.Matrix4(), Rq = new THREE.Quaternion(), Y = new THREE.Vector3(0, 1, 0), Sc = new THREE.Vector3(), Ps = new THREE.Vector3(), cc = new THREE.Color();
+  for (let i = 0; i < NB; i++) {
+    const x = spots[i * 2], z = spots[i * 2 + 1];
+    const h = figCell.has(ck(x, z)) ? 1.5 : 1.5 + rnd() * .5;
+    Rq.setFromAxisAngle(Y, rnd() * 3.14); Sc.set(1, h, 1); Ps.set(x, gy(x, z), z);
+    Mx.compose(Ps, Rq, Sc); gm.setMatrixAt(i, Mx);
+    cc.setRGB(.5 + rnd() * .12, .46 + rnd() * .1, .24 + rnd() * .08); gm.setColorAt(i, cc);
+  }
+  scene.add(gm);
+
+  // camera
+  const mid = T689.clone().add(T600).multiplyScalar(.5); mid.y = (T689.y + T600.y) / 2 * .8;
+  const dirH = new THREE.Vector3(Math.sin(Math.PI / 8), 0, Math.cos(Math.PI / 8)); // from south-south-east
+  const home = (dist, elev) => { cam.position.copy(mid).addScaledVector(dirH, dist / S * Math.cos(elev)); cam.position.y += dist / S * Math.sin(elev); cam.lookAt(mid); };
+  if (VIEW === 'mid') {
+    const T = T600.clone(); T.y += 0;
+    cam.fov = 50; cam.position.set(T.x + dirH.x * 250 / S, T.y + 90 / S, T.z + dirH.z * 250 / S); cam.lookAt(T.x, T.y - 10 / S, T.z);
+  } else if (VIEW === 'charlie') {
+    const cz = bz + dC / S + 60, cx = bx;
+    cam.fov = 55; let eye = gy(cx, cz) + 1.7;
+    for (let t = 0; t <= 1; t += .02) { const zz = cz + (bz + dC / S - cz) * t; 
+      const lim = eye + (gy(cx, bz + dC / S) + 1.7 - eye) * t; if (gy(cx, zz) + .3 > lim) { eye += (gy(cx, zz) + .3 - lim) / Math.max(t, .05); } }
+    window.__eye = eye - gy(cx, cz);
+    cam.position.set(cx, eye, cz); cam.lookAt(T600.x, T600.y + 1.7, T600.z);
+  } else if (VIEW === 'high') home(2900, .95);
+  else home(3500, .55);
+  cam.updateProjectionMatrix(); cam.updateMatrixWorld();
+  { const Z = new THREE.Matrix4().makeScale(0, 0, 0), m4 = new THREE.Matrix4(), v3 = new THREE.Vector3(); for (let i = 0; i < NB; i++) { gm.getMatrixAt(i, m4); v3.setFromMatrixPosition(m4); if (v3.distanceTo(cam.position) < (VIEW === 'charlie' ? 7 : 1.5)) { m4.copy(Z); gm.setMatrixAt(i, m4); } } gm.instanceMatrix.needsUpdate = true; } // no blade in the lens
+
+  // labels
+  const mk = (t, c) => { const e = document.createElement('div'); e.className = 'lb ' + (c || ''); e.textContent = t; document.body.appendChild(e); return e; };
+  const l689 = mk('689 CP  ' + Math.round(h689) + ' m'), l600 = mk('610 battle hill  ' + Math.round(h600) + ' m'), ld = mk(distM.toFixed(0) + ' m', 'd');
+  const proj = (v, el) => { const p = v.clone().project(cam); el.style.display = p.z > 1 ? 'none' : ''; el.style.left = (p.x + 1) / 2 * innerWidth + 'px'; el.style.top = (1 - p.y) / 2 * innerHeight + 'px'; };
+  proj(T689.clone().setY(T689.y + 2), l689); proj(T600.clone().setY(T600.y + 2), l600);
+  proj(T689.clone().add(T600).multiplyScalar(.5).setY((T689.y + T600.y) / 2 + 2), ld);
+
+  // width of ground at C's line height (within 20 m real), east-west, in scene metres
+  const zC = s600[1] + dC, hC = hAt(s600[0], zC); let e = 0, w = 0;
+  while (hAt(s600[0] + e, zC) >= hC - 20 && e < 800) e += 5;
+  while (hAt(s600[0] - w, zC) >= hC - 20 && w < 800) w += 5;
+  const hillW = (e + w) / S;
+  document.getElementById('hud').textContent =
+    `s = ${S}   vx = ${VX}\n` +
+    `summit to summit:        ${distM.toFixed(0)} m\n` +
+    `610 south slope (-100 m): ${slopeScene.toFixed(0)} m\n` +
+    `C line frontage (40 men): 60 m\n` +
+    `ground width at C line:  ${hillW.toFixed(0)} m` + (VIEW === 'charlie' ? `\neye height used:          ${window.__eye.toFixed(1)} m above ground` : '');
+  window.__stats = {eyeAbove: window.__eye, s: S, vx: VX, summitDist: distM, slope: slopeScene, frontage: 60, hillWidthAtC: hillW, realSlope: slopeReal, dC };
+  renderer.render(scene, cam);
+  window.__ready = true;
+  (function loop() { renderer.render(scene, cam); requestAnimationFrame(loop); })();
+}
+</script></body></html>

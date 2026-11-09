@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Character Sheet</title>
+<style>
+  :root { --bg: #f4efe4; --ink: #2b241a; --mute: #6b604e; --line: #d9cfbb; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #1f1b16; --ink: #f2ead8; --mute: #b4a88f; --line: #3a332a; } }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.5 Georgia, 'Palatino Linotype', serif; }
+  main { max-width: 1200px; margin: 0 auto; padding: 32px 16px 64px; }
+  h1 { font-size: 30px; margin: 0 0 4px; } .lede { color: var(--mute); margin: 0 0 32px; max-width: 70ch; }
+  section { border-top: 1px solid var(--line); padding: 28px 0; }
+  h2 { font-size: 22px; margin: 0 0 12px; } h2 span { display: block; font: italic 15px/1.4 Georgia, serif; color: var(--mute); }
+  img, video { width: 100%; height: auto; display: block; border-radius: 6px; background: #000; }
+  .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 12px; }
+  @media (max-width: 700px) { .pair { grid-template-columns: 1fr; } }
+  figure { margin: 0; } figcaption { font: 13px/1.4 system-ui, sans-serif; color: var(--mute); margin-top: 6px; }
+  a { color: inherit; } .ask { font: 14px/1.4 system-ui, sans-serif; color: var(--mute); margin: 12px 0 0; }
+</style>
+</head>
+<body>
+<main>
+<h1>Clay v3: the characters, for approval</h1>
+<p class="lede">The clay v2 figure on the Mixamo skeleton, with the motion layers and the living face. Each man is shown as a turnaround, his face at 6 m (the nearest the scene camera comes), and a 6-second walk in the elephant grass. The last image shows twelve riflemen made from twelve seeds.</p>
+
+<section>
+  <h2>Rifleman<span>face 1, sleeves rolled, repellent bottle in the band</span></h2>
+  <img src="rifleman1-turnaround.png" alt="Rifleman: front, three-quarter, side and back">
+  <div class="pair">
+    <figure><img src="rifleman1-face-6m.png" alt="Rifleman: face at 6 m"><figcaption>Face at 6 m (8° lens)</figcaption></figure>
+    <figure><video src="rifleman1-walk-small.mp4" controls loop muted playsinline preload="metadata"></video><figcaption>6 s walk · <a href="rifleman1-walk.mp4">full size</a></figcaption></figure>
+  </div>
+  <p class="ask">Approve, or note changes for Rifleman.</p>
+</section>
+<section>
+  <h2>Rifleman<span>face 3, darker skin, sleeves down, towel round the neck</span></h2>
+  <img src="rifleman3-turnaround.png" alt="Rifleman: front, three-quarter, side and back">
+  <div class="pair">
+    <figure><img src="rifleman3-face-6m.png" alt="Rifleman: face at 6 m"><figcaption>Face at 6 m (8° lens)</figcaption></figure>
+    <figure><video src="rifleman3-walk-small.mp4" controls loop muted playsinline preload="metadata"></video><figcaption>6 s walk · <a href="rifleman3-walk.mp4">full size</a></figcaption></figure>
+  </div>
+  <p class="ask">Approve, or note changes for Rifleman.</p>
+</section>
+<section>
+  <h2>Captain Himmer<span>no rifle; map in hand, pistol belt, map case</span></h2>
+  <img src="captain-turnaround.png" alt="Captain Himmer: front, three-quarter, side and back">
+  <div class="pair">
+    <figure><img src="captain-face-6m.png" alt="Captain Himmer: face at 6 m"><figcaption>Face at 6 m (8° lens)</figcaption></figure>
+    <figure><video src="captain-walk-small.mp4" controls loop muted playsinline preload="metadata"></video><figcaption>6 s walk · <a href="captain-walk.mp4">full size</a></figcaption></figure>
+  </div>
+  <p class="ask">Approve, or note changes for Captain Himmer.</p>
+</section>
+<section>
+  <h2>Radioman<span>PRC-25 on his back, whip antenna, handset</span></h2>
+  <img src="radioman-turnaround.png" alt="Radioman: front, three-quarter, side and back">
+  <div class="pair">
+    <figure><img src="radioman-face-6m.png" alt="Radioman: face at 6 m"><figcaption>Face at 6 m (8° lens)</figcaption></figure>
+    <figure><video src="radioman-walk-small.mp4" controls loop muted playsinline preload="metadata"></video><figcaption>6 s walk · <a href="radioman-walk.mp4">full size</a></figcaption></figure>
+  </div>
+  <p class="ask">Approve, or note changes for Radioman.</p>
+</section>
+<section>
+  <h2>Corpsman<span>two aid bags, pistol belt, no rifle</span></h2>
+  <img src="corpsman-turnaround.png" alt="Corpsman: front, three-quarter, side and back">
+  <div class="pair">
+    <figure><img src="corpsman-face-6m.png" alt="Corpsman: face at 6 m"><figcaption>Face at 6 m (8° lens)</figcaption></figure>
+    <figure><video src="corpsman-walk-small.mp4" controls loop muted playsinline preload="metadata"></video><figcaption>6 s walk · <a href="corpsman-walk.mp4">full size</a></figcaption></figure>
+  </div>
+  <p class="ask">Approve, or note changes for Corpsman.</p>
+</section>
+<section>
+  <h2>NVA soldier<span>steel helmet with net, chest rig, AK-47</span></h2>
+  <img src="nva-turnaround.png" alt="NVA soldier: front, three-quarter, side and back">
+  <div class="pair">
+    <figure><img src="nva-face-6m.png" alt="NVA soldier: face at 6 m"><figcaption>Face at 6 m (8° lens)</figcaption></figure>
+    <figure><video src="nva-walk-small.mp4" controls loop muted playsinline preload="metadata"></video><figcaption>6 s walk · <a href="nva-walk.mp4">full size</a></figcaption></figure>
+  </div>
+  <p class="ask">Approve, or note changes for NVA soldier.</p>
+</section>
+<section>
+  <h2>Twelve riflemen<span>one function, twelve seeds: face, skin, height, build, stubble, sleeves, towel, helmet band</span></h2>
+  <img src="rifleman-12-variants.png" alt="Twelve rifleman variants standing in a row">
+</section>
+</main>
+</body>
+</html>

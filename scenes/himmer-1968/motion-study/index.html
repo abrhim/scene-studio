@@ -1,0 +1,847 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Marine motion study</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #2a2a3a; }
+  canvas { display: block; }
+  .hud { position: fixed; font: 500 13px/1.35 system-ui, -apple-system, "Segoe UI", sans-serif; color: rgba(250, 240, 214, 0.85); letter-spacing: 0.02em; pointer-events: none; text-shadow: 0 1px 2px rgba(0, 0, 0, 0.7); }
+  #keys { left: 16px; top: 14px; }
+  #layers { left: 16px; top: 34px; font-variant-numeric: tabular-nums; }
+  #fps { right: 16px; top: 14px; text-align: right; font-variant-numeric: tabular-nums; }
+  .lbl { bottom: 18px; font-size: 22px; font-weight: 600; }
+  #lblL { left: 24px; } #lblR { left: calc(50% + 24px); }
+  #split { position: fixed; left: 50%; top: 0; bottom: 0; width: 2px; background: rgba(20, 20, 20, 0.6); display: none; }
+</style>
+</head>
+<body>
+<div id="keys" class="hud">1 two-hand rifle · 2 kit · 3 look · 4 load · 5 variation · 6 transitions · 7 hip sway · 0 raw clip · A all · H hero · V compare · C crowd · S walk sources</div>
+<div id="layers" class="hud"></div>
+<div id="fps" class="hud">-- fps</div>
+<div id="split"></div>
+<div id="lblL" class="hud lbl"></div>
+<div id="lblR" class="hud lbl"></div>
+<div class="hud lbl src" style="left:24px;display:none">Rifle Walk</div><div class="hud lbl src" style="left:calc(33.33% + 24px);display:none">Walk With Rifle</div><div class="hud lbl src" style="left:calc(66.67% + 24px);display:none">Patrol carry (stand-in)</div>
+<div class="src" style="position:fixed;left:33.33%;top:0;bottom:0;width:2px;background:rgba(20,20,20,.6);display:none"></div><div class="src" style="position:fixed;left:66.67%;top:0;bottom:0;width:2px;background:rgba(20,20,20,.6);display:none"></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<!-- cdnjs's r128 has no examples/ folder; these are the same r128 files from jsdelivr -->
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/libs/fflate.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/FBXLoader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/utils/SkeletonUtils.js"></script>
+<script>
+// Motion study: a procedural layer over the Mixamo clips that makes the realistic Marine walk less stiff.
+// ?view=hero|compare|crowd  ?layers=1234567 (which layers are on; ?layers= for the raw clip)  ?t0=seconds  ?clip=Rifle%20Walk
+// Each layer works per figure from a handful of parameters, so the same code runs 150 figures.
+(function () {
+  'use strict';
+  window.__ready = false;
+  const params = new URLSearchParams(location.search);
+  let VIEW = params.get('view') || 'hero';
+  const KEYS = ['rifle', 'kit', 'look', 'load', 'vary', 'trans', 'sway'];
+  const NAMES = { rifle: 'two-hand rifle', kit: 'kit', look: 'look', load: 'load', vary: 'variation', trans: 'transitions', sway: 'hip sway' };
+  const L = {}; KEYS.forEach((k, i) => { L[k] = !params.has('layers') || params.get('layers').includes(String(i + 1)); });
+  const T0 = Number(params.get('t0') || 0);
+  const CAMP = params.has('cam') ? params.get('cam').split(',').map(Number) : null; // hero camera: distance, height, look height, fov, lead
+  const ANIM = '../realistic-spike/anim/';
+  const WALK = params.get('clip') || 'Rifle Walk';
+  const IDLE = 'Rifle Idle';
+  const TAU = Math.PI * 2;
+  const lin = (hex) => new THREE.Color(hex).convertSRGBToLinear();
+  function mulberry32(a) { return function () { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+  const rand = mulberry32(19680416);
+  const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
+  const smooth = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
+  const UP = new THREE.Vector3(0, 1, 0), RIGHT = new THREE.Vector3(-1, 0, 0), FWD = new THREE.Vector3(0, 0, 1); // figure space: faces +z, his right is -x
+
+  // ---------- renderer (as template/index.html: sRGB out, ACES, exposure 1.12) ----------
+  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setPixelRatio(Math.min(2, devicePixelRatio));
+  renderer.setSize(innerWidth, innerHeight);
+  renderer.outputEncoding = THREE.sRGBEncoding;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.12;
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.autoClear = false;
+  document.body.appendChild(renderer.domElement);
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(30, innerWidth / innerHeight, 0.05, 900);
+  const camera2 = new THREE.PerspectiveCamera(30, innerWidth / innerHeight, 0.05, 900);
+  const srcCams = [0, 1, 2].map(() => new THREE.PerspectiveCamera(30, 1, 0.05, 900));
+  addEventListener('resize', () => renderer.setSize(innerWidth, innerHeight));
+
+  const HORIZON = '#efe0bf';
+  function skyCanvas(w, h, withGround) {
+    const c = document.createElement('canvas'); c.width = w; c.height = h;
+    const g = c.getContext('2d'); const gr = g.createLinearGradient(0, 0, 0, h);
+    gr.addColorStop(0, '#5d93c9'); gr.addColorStop(0.3, '#a9c9e2'); gr.addColorStop(0.48, HORIZON);
+    if (withGround) { gr.addColorStop(0.52, '#8c7a55'); gr.addColorStop(1, '#4e4630'); } else gr.addColorStop(1, HORIZON);
+    g.fillStyle = gr; g.fillRect(0, 0, w, h); return c;
+  }
+  const skyTex = new THREE.CanvasTexture(skyCanvas(4, 512, false)); skyTex.encoding = THREE.sRGBEncoding; scene.background = skyTex;
+  const envSrc = new THREE.CanvasTexture(skyCanvas(256, 128, true)); envSrc.encoding = THREE.sRGBEncoding; envSrc.mapping = THREE.EquirectangularReflectionMapping;
+  scene.environment = new THREE.PMREMGenerator(renderer).fromEquirectangular(envSrc).texture;
+  scene.fog = new THREE.FogExp2(new THREE.Color(HORIZON).getHex(), 0.011);
+  const hemi = new THREE.HemisphereLight(0xdfe9ff, 0xc9b07a, 0.55);
+  const sun = new THREE.DirectionalLight(0xffe0b4, 1.55);
+  sun.castShadow = true; sun.shadow.mapSize.set(2048, 2048);
+  sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.02;
+  const fill = new THREE.DirectionalLight(0xfff6ea, 0.25); fill.position.set(6, 3, -4);
+  scene.add(hemi, sun, sun.target, fill);
+  function aimSun(x, z, r) { sun.target.position.set(x, 0, z); sun.position.set(x - 7, 6.5, z + 5); Object.assign(sun.shadow.camera, { left: -r, right: r, top: r, bottom: -r, near: 0.5, far: 40 }); sun.shadow.camera.updateProjectionMatrix(); }
+
+  // ---------- ground: as the spike (a slope rising to -z, flat along the trail at z = 0), with rough patches on the trail ----------
+  const SLOPE = 0.11;
+  function n2(x, z) { return Math.sin(x * 0.21 + Math.sin(z * 0.17) * 2) * 0.5 + Math.sin(z * 0.33 - x * 0.12) * 0.35 + Math.sin(x * 0.9 + z * 0.7) * 0.08; }
+  function groundY(x, z) { const near = Math.min(1, Math.max(0, (Math.abs(z) - 2.5) / 6)); return -SLOPE * z + n2(x, z) * 0.35 * near + n2(x * 3, z * 3) * 0.03; }
+  const ROUGH = [[-4.9, -4.2], [-1.9, -1.0], [4.2, 5.1]]; // x ranges of broken ground on the hero's trail (z = 0)
+  {
+    const geo = new THREE.PlaneGeometry(260, 260, 160, 160); geo.rotateX(-Math.PI / 2);
+    const p = geo.attributes.position, col = new Float32Array(p.count * 3);
+    const a = lin(0x7d6a48), b = lin(0x8e8a55), c = new THREE.Color();
+    for (let i = 0; i < p.count; i++) { const x = p.getX(i), z = p.getZ(i); p.setY(i, groundY(x, z)); c.copy(a).lerp(b, 0.5 + 0.5 * Math.sin(x * 0.3 + z * 0.4) * Math.cos(z * 0.21)); col.set([c.r, c.g, c.b], i * 3); }
+    geo.setAttribute('color', new THREE.BufferAttribute(col, 3)); geo.computeVertexNormals();
+    const cv = document.createElement('canvas'); cv.width = cv.height = 256; const g = cv.getContext('2d');
+    g.fillStyle = '#b0a080'; g.fillRect(0, 0, 256, 256);
+    for (let i = 0; i < 2600; i++) { const v = 120 + rand() * 90; g.fillStyle = `rgba(${v | 0},${(v * 0.9) | 0},${(v * 0.62) | 0},0.5)`; g.fillRect(rand() * 256, rand() * 256, 1 + rand() * 3, 1 + rand() * 2); }
+    for (let i = 0; i < 500; i++) { g.strokeStyle = `rgba(${150 + rand() * 60 | 0},${140 + rand() * 50 | 0},${70 + rand() * 30 | 0},0.6)`; g.beginPath(); const x = rand() * 256, y = rand() * 256; g.moveTo(x, y); g.lineTo(x + (rand() - 0.5) * 14, y + (rand() - 0.5) * 14); g.stroke(); }
+    const t = new THREE.CanvasTexture(cv); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(90, 90); t.encoding = THREE.sRGBEncoding; t.anisotropy = 8;
+    const ground = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ map: t, vertexColors: true, roughness: 0.95 }));
+    ground.receiveShadow = true; scene.add(ground);
+    // stones and clods on the rough patches, kept mostly off the foot line
+    const rg = new THREE.IcosahedronGeometry(1, 0); const rm = new THREE.MeshStandardMaterial({ color: lin(0x5c5242), roughness: 0.95, flatShading: true });
+    const rocks = []; for (const [x0, x1] of ROUGH) for (let i = 0; i < 46; i++) { const x = x0 + rand() * (x1 - x0), side = rand() < 0.5 ? -1 : 1, z = rand() < 0.25 ? (rand() - 0.5) * 0.3 : side * (0.2 + rand() * 0.9), s = rand() < 0.2 && Math.abs(z) > 0.25 ? 0.05 + rand() * 0.05 : 0.015 + rand() * 0.025; rocks.push([x, z, s]); }
+    const ri = new THREE.InstancedMesh(rg, rm, rocks.length), m = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler();
+    rocks.forEach(([x, z, s], i) => { e.set(rand() * 3, rand() * 3, rand() * 3); q.setFromEuler(e); m.compose(new THREE.Vector3(x, groundY(x, z) + s * 0.25, z), q, new THREE.Vector3(s * (1 + rand() * 0.6), s * 0.55, s)); ri.setMatrixAt(i, m); });
+    ri.castShadow = ri.receiveShadow = true; scene.add(ri);
+  }
+
+  // ---------- grass: the spike's elephant grass behind the clearing, and short tufts on the trail ----------
+  const wind = { value: 0 };
+  function bladeTexture(n, short) {
+    const cv = document.createElement('canvas'); cv.width = 256; cv.height = 512; const g = cv.getContext('2d');
+    for (let i = 0; i < n; i++) {
+      const x = 8 + rand() * 240, top = 10 + rand() * (short ? 300 : 120), w = 3 + rand() * 4, lean = (rand() - 0.5) * 60;
+      const k = rand(); const r = 120 + k * 80, gg = 125 + k * 50, bb = 55 + k * 25;
+      const grd = g.createLinearGradient(0, 512, 0, top); grd.addColorStop(0, `rgb(${r * 0.55 | 0},${gg * 0.6 | 0},${bb * 0.5 | 0})`); grd.addColorStop(0.6, `rgb(${r * 0.85 | 0},${gg | 0},${bb | 0})`); grd.addColorStop(1, `rgb(${r + 40 | 0},${gg + 30 | 0},${bb + 20 | 0})`);
+      g.fillStyle = grd; g.beginPath(); g.moveTo(x - w, 512); g.quadraticCurveTo(x - w * 0.6 + lean * 0.3, (512 + top) / 2, x + lean, top); g.quadraticCurveTo(x + w * 0.6 + lean * 0.3, (512 + top) / 2, x + w, 512); g.fill();
+    }
+    const tex = new THREE.CanvasTexture(cv); tex.encoding = THREE.sRGBEncoding; return tex;
+  }
+  function clumpGeo(W, H0, H1) {
+    const pos = [], uv = [], idx = [];
+    for (let q = 0; q < 4; q++) {
+      const ang = q * Math.PI / 4 + rand() * 0.3, cx = Math.cos(ang), sz = Math.sin(ang), H = H0 + rand() * (H1 - H0), bend = (0.25 + rand() * 0.3) * H / 2, base = pos.length / 3;
+      for (let j = 0; j <= 4; j++) { const t = j / 4, y = H * t, off = bend * t * t; for (const s of [-1, 1]) { pos.push(cx * W * s + sz * off, y, sz * W * s - cx * off); uv.push((s + 1) / 2, t); } }
+      for (let j = 0; j < 4; j++) { const a = base + j * 2; idx.push(a, a + 1, a + 3, a, a + 3, a + 2); }
+    }
+    const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); geo.setIndex(idx); geo.computeVertexNormals(); return geo;
+  }
+  function grassMat(tex, sway) {
+    const mat = new THREE.MeshStandardMaterial({ map: tex, alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.85 });
+    mat.onBeforeCompile = (sh) => { sh.uniforms.uWind = wind; sh.vertexShader = 'uniform float uWind;\n' + sh.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>
+      vec4 wp = instanceMatrix * vec4(0.,0.,0.,1.); float h2 = position.y * position.y * ${sway.toFixed(3)};
+      transformed.x += h2 * 0.12 * sin(uWind * 1.3 + wp.x * 0.35 + wp.z * 0.2); transformed.z += h2 * 0.08 * sin(uWind * 1.7 + wp.z * 0.4);`); };
+    return mat;
+  }
+  function scatter(geo, mat, n, tries, ok, sMin, sMax) {
+    const spots = []; for (let i = 0; i < tries && spots.length < n; i++) { const x = (rand() - 0.5) * 150, z = (rand() - 0.5) * 120 - 10; if (ok(x, z)) spots.push([x, z]); }
+    const inst = new THREE.InstancedMesh(geo, mat, spots.length), m = new THREE.Matrix4(), q4 = new THREE.Quaternion(), s3 = new THREE.Vector3();
+    spots.forEach(([x, z], i) => { q4.setFromAxisAngle(UP, rand() * TAU); const s = sMin + rand() * (sMax - sMin); s3.set(s, s * (0.85 + rand() * 0.3), s); m.compose(new THREE.Vector3(x, groundY(x, z) - 0.03, z), q4, s3); inst.setMatrixAt(i, m); });
+    inst.receiveShadow = true; scene.add(inst); return inst;
+  }
+  scatter(clumpGeo(0.75, 2.0, 2.4), grassMat(bladeTexture(46, false), 0.25), 5200, 30000, (x, z) => {
+    const patch = Math.sin(x * 0.13 + 1.3) * Math.sin(z * 0.11 + 0.4) + Math.sin(x * 0.05 - z * 0.07) * 0.6;
+    return patch > 0.0 && !(z > -6.5 && z < 18 && Math.abs(x) < 45);
+  }, 0.8, 1.2);
+  scatter(clumpGeo(0.22, 0.25, 0.5), grassMat(bladeTexture(60, true), 1.6), 9000, 40000, (x, z) => z > -6.5 && z < 12 && Math.abs(x) < 45 && Math.abs(z) > 0.28 && Math.sin(x * 1.7) * Math.sin(z * 2.3) + Math.sin(x * 0.4 + z) > -0.2, 0.5, 1.0);
+
+  // ---------- loading ----------
+  const gltfLoader = new THREE.GLTFLoader();
+  const loadGltf = (u) => new Promise((res, rej) => gltfLoader.load(u, res, undefined, rej));
+  const fbxLoader = new THREE.FBXLoader();
+  const loadFbx = (u) => new Promise((res, rej) => fbxLoader.load(u, res, undefined, rej));
+  const clips = {};
+
+  // ---------- Mixamo retarget (from realistic-spike/index.html), with one change: the hips' sway is kept ----------
+  // The spike strips the hips' horizontal motion entirely (hp.x, hp.z = rest), which also throws away the side-to-side weight
+  // shift and the surge of each step. Here only the straight-line drift is removed; the residual is stored per clip
+  // (userData.sway) and the sway layer adds it back, weighted by each playing action.
+  const MIX = { Hips: 'pelvis', Spine: 'spine_01', Spine1: 'spine_02', Spine2: 'spine_03', Neck: 'neck_01', Head: 'head' };
+  for (const [S, s] of [['Left', 'l'], ['Right', 'r']]) {
+    Object.assign(MIX, { [S + 'Shoulder']: 'clavicle_' + s, [S + 'Arm']: 'upperarm_' + s, [S + 'ForeArm']: 'lowerarm_' + s, [S + 'Hand']: 'hand_' + s, [S + 'UpLeg']: 'thigh_' + s, [S + 'Leg']: 'calf_' + s, [S + 'Foot']: 'foot_' + s, [S + 'ToeBase']: 'ball_' + s });
+    for (const [F, f] of [['Thumb', 'thumb'], ['Index', 'index'], ['Middle', 'middle'], ['Ring', 'ring'], ['Pinky', 'pinky']]) for (let k = 1; k <= 3; k++) MIX[S + 'Hand' + F + k] = f + '_0' + k + '_' + s;
+  }
+  const MIXR = {}; for (const k in MIX) MIXR[MIX[k]] = k;
+  const mixKey = (n) => n.replace(/^mixamorig\d*[:_]?/i, '');
+  let tposeRef = null, bindRest = null;
+  function captureTpose(root, clip) {
+    const m = new THREE.AnimationMixer(root); m.clipAction(clip).play(); m.setTime(0); root.updateMatrixWorld(true);
+    tposeRef = {}; root.traverse((o) => { if (o.isBone) tposeRef[o.name] = { q: o.getWorldQuaternion(new THREE.Quaternion()), p: o.getWorldPosition(new THREE.Vector3()) }; });
+    m.stopAllAction(); m.uncacheRoot(root);
+  }
+  function readBind(obj) {
+    let sk = null; obj.traverse((o) => { if (o.isSkinnedMesh && !sk) sk = o; }); if (!sk) return null;
+    const r = {}, q = new THREE.Quaternion(), p = new THREE.Vector3(), sc = new THREE.Vector3();
+    sk.skeleton.bones.forEach((b, i) => { new THREE.Matrix4().copy(sk.skeleton.boneInverses[i]).invert().decompose(p, q, sc); r[mixKey(b.name)] = { q: q.clone(), p: p.clone() }; });
+    return r;
+  }
+  function relTo(root, bone, q, p) {
+    const rq = root.getWorldQuaternion(new THREE.Quaternion()).invert();
+    if (q) bone.getWorldQuaternion(q).premultiply(rq);
+    if (p) { bone.getWorldPosition(p); p.applyMatrix4(new THREE.Matrix4().copy(root.matrixWorld).invert()); }
+  }
+  function retarget(src, clip, name, tgt) {
+    const bones = {}; src.traverse((o) => { if (o.isBone || o.type === 'Bone' || MIX[mixKey(o.name)]) bones[mixKey(o.name)] = o; });
+    src.updateMatrixWorld(true);
+    const rest = {};
+    for (const k in bones) { if (bindRest && bindRest[k]) rest[k] = bindRest[k]; else { const q = new THREE.Quaternion(), p = new THREE.Vector3(); relTo(src, bones[k], q, p); rest[k] = { q, p }; } }
+    const tb = {}; tgt.traverse((o) => { if (o.isBone) tb[o.name] = o; });
+    const pairs = Object.keys(MIX).filter((k) => bones[k] && tb[MIX[k]]);
+    const hipScale = tposeRef.pelvis.p.y / Math.max(1e-6, rest.Hips.p.y);
+    const m = new THREE.AnimationMixer(src); m.clipAction(clip).play();
+    const fps = 30, n = Math.max(2, Math.round(clip.duration * fps) + 1), times = new Float32Array(n);
+    const hipAt = (t) => { m.setTime(t); src.updateMatrixWorld(true); const p = new THREE.Vector3(); relTo(src, bones.Hips, null, p); return p; };
+    const h0 = hipAt(0), h1 = hipAt(clip.duration * 0.999);
+    const speed = Math.hypot(h1.x - h0.x, h1.z - h0.z) * hipScale / Math.max(0.1, clip.duration);
+    const qv = {}; pairs.forEach((k) => { qv[k] = new Float32Array(n * 4); });
+    const order = []; (function walk(o) { if (o.isBone) order.push(o.name); o.children.forEach(walk); })(tgt);
+    const inv = {}; const qs = new THREE.Quaternion(), qt = new THREE.Quaternion();
+    const hw = [];
+    for (let i = 0; i < n; i++) {
+      const t = Math.min(clip.duration, i / fps); times[i] = t; m.setTime(t); src.updateMatrixWorld(true);
+      const world = {};
+      for (const tn of order) {
+        const k = MIXR[tn] && bones[MIXR[tn]] ? MIXR[tn] : null;
+        if (k) { relTo(src, bones[k], qs, null); qt.copy(qs).multiply(inv[k] || (inv[k] = rest[k].q.clone().invert())).multiply(tposeRef[tn].q); world[tn] = qt.clone(); }
+        else world[tn] = tposeRef[tn] ? tposeRef[tn].q.clone() : new THREE.Quaternion();
+        const par = tb[tn].parent; const pq = par && par.isBone ? world[par.name] : par.getWorldQuaternion(new THREE.Quaternion());
+        if (k) pq.clone().invert().multiply(world[tn]).toArray(qv[k], i * 4);
+      }
+      const hpos = new THREE.Vector3(); relTo(src, bones.Hips, null, hpos);
+      hw.push(hpos.sub(rest.Hips.p).multiplyScalar(hipScale).add(tposeRef.pelvis.p));
+    }
+    // residual horizontal hip motion: minus the straight line from the first to the last frame, minus its mean
+    // Mixamo's last frame repeats the first (the loop closes), so the drift is measured up to the frame before it
+    const e = hw[n - 1].distanceTo(hw[0]) < hw[n - 2].distanceTo(hw[0]) * 0.5 ? n - 2 : n - 1;
+    const dx = (hw[e].x - hw[0].x) / times[e], dz = (hw[e].z - hw[0].z) / times[e], res = [];
+    for (let i = 0; i < n; i++) { const j = i > e ? 0 : i; res.push([hw[j].x - hw[0].x - dx * times[j], hw[j].z - hw[0].z - dz * times[j]]); }
+    const mx = res.reduce((s, r) => s + r[0], 0) / n, mz = res.reduce((s, r) => s + r[1], 0) / n;
+    const par = tb.pelvis.parent; par.updateMatrixWorld(true); const pinv = new THREE.Matrix4().copy(par.matrixWorld).invert();
+    const pv = new Float32Array(n * 3), sway = new Float32Array(n * 3), o0 = tposeRef.pelvis.p.clone().applyMatrix4(pinv);
+    for (let i = 0; i < n; i++) {
+      new THREE.Vector3(tposeRef.pelvis.p.x, hw[i].y, tposeRef.pelvis.p.z).applyMatrix4(pinv).toArray(pv, i * 3); // root motion stripped, as the spike
+      new THREE.Vector3(tposeRef.pelvis.p.x + res[i][0] - mx, tposeRef.pelvis.p.y, tposeRef.pelvis.p.z + res[i][1] - mz).applyMatrix4(pinv).sub(o0).toArray(sway, i * 3);
+    }
+    const tracks = pairs.map((k) => new THREE.QuaternionKeyframeTrack(MIX[k] + '.quaternion', times, qv[k]));
+    tracks.push(new THREE.VectorKeyframeTrack('pelvis.position', times, pv));
+    const out = new THREE.AnimationClip(name, clip.duration, tracks);
+    const swayAmp = Math.max(...res.map((r) => Math.abs(r[0] - mx))), surgeAmp = Math.max(...res.map((r) => Math.abs(r[1] - mz)));
+    out.userData = { speed, mixamo: true, sway, n, fps, swayAmp, surgeAmp };
+    return out;
+  }
+  function sampleSway(clip, time, out) {
+    const u = clip.userData; if (!u.sway) return out.set(0, 0, 0);
+    const f = clamp((time % clip.duration) * u.fps, 0, u.n - 1), i = Math.floor(f), j = Math.min(u.n - 1, i + 1), a = f - i, s = u.sway;
+    return out.set(s[i * 3] * (1 - a) + s[j * 3] * a, s[i * 3 + 1] * (1 - a) + s[j * 3 + 1] * a, s[i * 3 + 2] * (1 - a) + s[j * 3 + 2] * a);
+  }
+  // per-bone mean of a clip (the centre that the stride and arm-swing scaling pivots on)
+  function clipMeans(clip) {
+    const out = {};
+    for (const tr of clip.tracks) {
+      if (!tr.name.endsWith('.quaternion')) continue;
+      const v = tr.values, n = v.length / 4, r = new THREE.Quaternion(0, 0, 0, 0), q = new THREE.Quaternion(), ref = new THREE.Quaternion().fromArray(v, 0);
+      for (let i = 0; i < n; i++) { q.fromArray(v, i * 4); const s = q.dot(ref) < 0 ? -1 : 1; r.x += q.x * s; r.y += q.y * s; r.z += q.z * s; r.w += q.w * s; }
+      out[tr.name.split('.')[0]] = r.normalize();
+    }
+    return out;
+  }
+
+  // ---------- rig additions: extra bones for the rifle, kit and eyes, made once per glb by re-skinning its rigid parts ----------
+  // The build skins the kit rigidly to pelvis and head and merges it into one mesh. Here each rigid part (found as a connected
+  // piece of the kit mesh) gets its own bone with a pivot where it hangs, so the motion layer can swing it.
+  const NEW_BONES = ['rifle', 'canteen_l', 'canteen_r', 'pouch_l', 'pouch_r', 'helmet', 'vest', 'eye_l', 'eye_r'];
+  const PARENT = { rifle: 'Root', canteen_l: 'pelvis', canteen_r: 'pelvis', pouch_l: 'pelvis', pouch_r: 'pelvis', helmet: 'head', vest: 'spine_03', eye_l: 'head', eye_r: 'head' };
+  function components(geo) {
+    const pos = geo.attributes.position, n = pos.count, par = new Int32Array(n); for (let i = 0; i < n; i++) par[i] = i;
+    const find = (i) => { while (par[i] !== i) { par[i] = par[par[i]]; i = par[i]; } return i; };
+    const uni = (a, b) => { a = find(a); b = find(b); if (a !== b) par[a] = b; };
+    const idx = geo.index.array; for (let i = 0; i < idx.length; i += 3) { uni(idx[i], idx[i + 1]); uni(idx[i + 1], idx[i + 2]); }
+    const h = new Map(); for (let i = 0; i < n; i++) { const k = Math.round(pos.getX(i) * 1e4) + ',' + Math.round(pos.getY(i) * 1e4) + ',' + Math.round(pos.getZ(i) * 1e4); if (h.has(k)) uni(i, h.get(k)); else h.set(k, i); }
+    const comps = new Map(); for (let i = 0; i < n; i++) { const r = find(i); if (!comps.has(r)) comps.set(r, []); comps.get(r).push(i); }
+    return [...comps.values()];
+  }
+  function rigFigure(root, info) {
+    // info: from analyse (shared per glb). Adds the bones and rebinds every skinned mesh to a skeleton that includes them.
+    const bones = {}; root.traverse((o) => { if (o.isBone) bones[o.name] = o; });
+    for (const nm of NEW_BONES) { const b = new THREE.Bone(); b.name = nm; b.position.copy(info.local[nm]); bones[PARENT[nm]].add(b); bones[nm] = b; }
+    root.traverse((o) => {
+      if (!o.isSkinnedMesh) return;
+      const sk = o.skeleton, bl = sk.bones.slice(), inv = sk.boneInverses.map((m) => m.clone());
+      for (const nm of NEW_BONES) {
+        const pi = sk.bones.indexOf(bones[nm === 'rifle' ? 'hand_r' : PARENT[nm]]);
+        bl.push(bones[nm]);
+        // rifle: same inverse as the right hand (its geometry is stored in hand space); others: parent's inverse shifted to the pivot
+        inv.push(nm === 'rifle' ? inv[pi].clone() : new THREE.Matrix4().makeTranslation(-info.local[nm].x, -info.local[nm].y, -info.local[nm].z).multiply(inv[pi]));
+      }
+      o.bind(new THREE.Skeleton(bl, inv), o.bindMatrix);
+    });
+  }
+  function analyse(root, isHero) {
+    // finds the rigid parts and rewrites skinIndex on the shared geometry; returns pivots in each new bone's parent space
+    root.updateMatrixWorld(true);
+    let skin = null, kit = null, rifleMesh = null;
+    root.traverse((o) => { if (!o.isSkinnedMesh) return; if (o.name === 'Marine_rifle') rifleMesh = o; else if (/kit/i.test(o.material.name)) kit = o; else skin = o; });
+    const sk = kit.skeleton, BI = {}; sk.bones.forEach((b, i) => { BI[b.name] = i; });
+    const N0 = sk.bones.length, NI = {}; NEW_BONES.forEach((nm, i) => { NI[nm] = N0 + i; });
+    const bindPos = (name) => new THREE.Vector3().setFromMatrixPosition(new THREE.Matrix4().copy(sk.boneInverses[BI[name]]).invert());
+    const pel = bindPos('pelvis'), head = bindPos('head'), sp3 = bindPos('spine_03');
+    const beltY = pel.y + 0.035;
+    const pivW = {}, restDir = {}, report = {};
+    function rigidTo(mesh, list, nm) {
+      const si = mesh.geometry.attributes.skinIndex, sw = mesh.geometry.attributes.skinWeight;
+      for (const i of list) { si.setXYZW(i, NI[nm], 0, 0, 0); sw.setXYZW(i, 1, 0, 0, 0); }
+      si.needsUpdate = sw.needsUpdate = true;
+    }
+    function scan(mesh) {
+      const g = mesh.geometry, pos = g.attributes.position, si = g.attributes.skinIndex, sw = g.attributes.skinWeight, v = new THREE.Vector3();
+      return components(g).map((list) => {
+        const box = new THREE.Box3(), cnt = {}; let rigid = 0;
+        for (const i of list) {
+          v.fromBufferAttribute(pos, i).applyMatrix4(mesh.bindMatrix); box.expandByPoint(v);
+          let bi = 0, bw = -1; for (let k = 0; k < 4; k++) { const w = sw.array[i * 4 + k]; if (w > bw) { bw = w; bi = si.array[i * 4 + k]; } }
+          const nm = sk.bones[bi].name; cnt[nm] = (cnt[nm] || 0) + 1; if (bw > 0.99) rigid++;
+        }
+        const dom = Object.keys(cnt).sort((a, b) => cnt[b] - cnt[a])[0];
+        return { list, box, c: box.getCenter(new THREE.Vector3()), size: box.getSize(new THREE.Vector3()), dom, allRigid: rigid === list.length, frac: cnt[dom] / list.length };
+      });
+    }
+    const groups = {}; const add = (nm, c) => { (groups[nm] = groups[nm] || []).push(c); };
+    for (const c of scan(kit)) {
+      if (c.dom === 'hand_r' && c.allRigid) add('rifle', c);
+      else if (c.dom === 'head' && c.frac > 0.95 && c.c.y > head.y + 0.03) add('helmet', c);
+      else if (c.dom === 'pelvis' && c.allRigid && Math.max(c.size.x, c.size.z) < 0.2) {
+        const ang = Math.atan2(c.c.x - pel.x, c.c.z - pel.z) * 180 / Math.PI, side = c.c.x > pel.x ? '_l' : '_r';
+        if (Math.abs(ang) > 95) add('canteen' + side, c); else if (Math.abs(ang) > 18 && Math.abs(ang) < 75) add('pouch' + side, c);
+      }
+    }
+    for (const nm in groups) {
+      const box = new THREE.Box3(); for (const c of groups[nm]) box.union(c.box);
+      const c = box.getCenter(new THREE.Vector3()), inward = new THREE.Vector3(pel.x - c.x, 0, pel.z - c.z).normalize();
+      if (/canteen/.test(nm)) pivW[nm] = new THREE.Vector3(c.x, box.max.y - 0.005, c.z).addScaledVector(inward, 0.03);
+      else if (/pouch/.test(nm)) pivW[nm] = new THREE.Vector3(c.x, box.max.y - 0.015, c.z).addScaledVector(inward, 0.025);
+      else if (nm === 'helmet') pivW[nm] = new THREE.Vector3(c.x, box.max.y - 0.075, c.z);
+      if (nm !== 'rifle') { restDir[nm] = c.clone().sub(pivW[nm]).normalize(); }
+      for (const cc of groups[nm]) rigidTo(kit, cc.list, nm);
+      report[nm] = groups[nm].reduce((s, cc) => s + cc.list.length, 0);
+    }
+    // the vest: every kit vertex weighted to spine_03 now follows the vest bone (a child of spine_03 at the same place)
+    { const si = kit.geometry.attributes.skinIndex; let n = 0; for (let i = 0; i < si.array.length; i++) if (si.array[i] === BI.spine_03) { si.array[i] = NI.vest; n++; } si.needsUpdate = true; report.vest = n; pivW.vest = sp3.clone(); }
+    if (rifleMesh) { const all = []; for (let i = 0; i < rifleMesh.geometry.attributes.position.count; i++) all.push(i); rigidTo(rifleMesh, all, 'rifle'); report.rifle = all.length; }
+    // eyes: small round pieces of the skin mesh that follow the head
+    if (isHero) {
+      const eyes = scan(skin).filter((c) => c.dom === 'head' && c.frac > 0.95 && c.size.x > 0.016 && c.size.x < 0.034 && c.size.y > 0.016 && c.size.y < 0.034 && c.size.z > 0.012 && c.size.z < 0.034 && c.c.y > head.y && c.c.z > head.z);
+      for (const side of ['_l', '_r']) {
+        const mine = eyes.filter((c) => (side === '_l') === (c.c.x > head.x)); if (!mine.length) continue;
+        const box = new THREE.Box3(); for (const c of mine) box.union(c.box);
+        pivW['eye' + side] = box.getCenter(new THREE.Vector3());
+        for (const c of mine) rigidTo(skin, c.list, 'eye' + side);
+        report['eye' + side] = mine.reduce((s, c) => s + c.list.length, 0);
+      }
+    }
+    // pivots into each new bone's parent space (bind), and rest directions in the parent's frame
+    const local = {}, restLocal = {};
+    for (const nm of NEW_BONES) {
+      const pi = BI[PARENT[nm]], inv = sk.boneInverses[pi];
+      local[nm] = pivW[nm] ? pivW[nm].clone().applyMatrix4(inv) : new THREE.Vector3();
+      if (restDir[nm]) restLocal[nm] = restDir[nm].clone().transformDirection(inv);
+    }
+    // body axes (right, up, forward) in each bone's parent frame at bind, for the additive layers
+    const axes = {};
+    sk.bones.forEach((b, i) => {
+      if (!b.parent || !b.parent.isBone) return;
+      const q = new THREE.Quaternion(); new THREE.Matrix4().copy(sk.boneInverses[BI[b.parent.name]]).invert().decompose(new THREE.Vector3(), q, new THREE.Vector3()); q.invert();
+      axes[b.name] = { r: RIGHT.clone().applyQuaternion(q), u: UP.clone().applyQuaternion(q), f: FWD.clone().applyQuaternion(q) };
+    });
+    const hq = new THREE.Quaternion(); new THREE.Matrix4().copy(sk.boneInverses[BI.head]).invert().decompose(new THREE.Vector3(), hq, new THREE.Vector3()); hq.invert();
+    axes.eye = { r: RIGHT.clone().applyQuaternion(hq), u: UP.clone().applyQuaternion(hq) };
+    console.log('rig', isHero ? 'hero' : 'lod', JSON.stringify(report));
+    return { local, restLocal, axes, report };
+  }
+
+  // ---------- the rifle frame (from the build's markers), and each clip's grip ----------
+  const rifle = { C: null, Cinv: null };
+  function aimFrame(o, target, up) { const y = target.clone().sub(o).normalize(), u = (up || UP).clone(); const x = new THREE.Vector3().crossVectors(y, u).normalize(), z = new THREE.Vector3().crossVectors(x, y); return new THREE.Matrix4().makeBasis(x, y, z).setPosition(o); }
+  function setupRifleFrame(root) {
+    let sk = null; root.traverse((o) => { if (o.name === 'Marine_rifle') sk = o; });
+    const handR = sk.skeleton.bones.find((b) => b.name === 'hand_r'), bi = sk.skeleton.bones.indexOf(handR);
+    const mk = sk.userData.rifle_markers || (sk.parent && sk.parent.userData.rifle_markers);
+    const toHand = new THREE.Matrix4().multiplyMatrices(sk.skeleton.boneInverses[bi], sk.bindMatrix);
+    const P = [0, 1, 2].map((i) => new THREE.Vector3(mk[i * 3], mk[i * 3 + 2], -mk[i * 3 + 1]).applyMatrix4(toHand));
+    rifle.C = aimFrame(P[0], P[1], P[2].clone().sub(P[0])); rifle.Cinv = rifle.C.clone().invert(); rifle.len = P[0].distanceTo(P[1]);
+  }
+  // the spike's rule: grip just ahead of the right wrist, barrel through the left hand. Recomputed every frame, so the rifle turns
+  // whenever the two hands move relative to each other: the "gun is shifting" the user saw.
+  function spikeAim(pr, pl, out) { const grip = pr.clone().lerp(pl, 0.12); return out.copy(aimFrame(grip, pl.clone().addScaledVector(pl.clone().sub(pr).normalize(), 0.3))).multiply(rifle.Cinv); }
+  function computeGrip(root, clip, t0, t1) {
+    // one fixed grip per clip: the spike's aim averaged over the clip, in the right hand's space; then the left hand's mean
+    // place and turn in the rifle's frame (where the IK pins it)
+    const m = new THREE.AnimationMixer(root); m.clipAction(clip).play();
+    const hr = root.getObjectByName('hand_r'), hl = root.getObjectByName('hand_l'), N = 40;
+    const W = new THREE.Matrix4(), rel = new THREE.Matrix4(), p = new THREE.Vector3(), q = new THREE.Quaternion(), s = new THREE.Vector3();
+    const pr = new THREE.Vector3(), pl = new THREE.Vector3();
+    const acc = () => ({ p: new THREE.Vector3(), q: new THREE.Quaternion(0, 0, 0, 0), ref: null, n: 0 });
+    const push = (a, p, q) => { a.p.add(p); if (!a.ref) a.ref = q.clone(); const sg = q.dot(a.ref) < 0 ? -1 : 1; a.q.x += q.x * sg; a.q.y += q.y * sg; a.q.z += q.z * sg; a.q.w += q.w * sg; a.n++; };
+    const fin = (a) => new THREE.Matrix4().compose(a.p.multiplyScalar(1 / a.n), a.q.normalize(), new THREE.Vector3(1, 1, 1));
+    const g = acc(); const at = (i) => { m.setTime(t0 + (t1 - t0) * i / N); root.updateMatrixWorld(true); hr.getWorldPosition(pr); hl.getWorldPosition(pl); };
+    for (let i = 0; i < N; i++) { at(i); spikeAim(pr, pl, W); rel.copy(hr.matrixWorld).invert().multiply(W).decompose(p, q, s); push(g, p, q); }
+    const G = fin(g); const l = acc();
+    for (let i = 0; i < N; i++) { at(i); W.copy(hr.matrixWorld).multiply(G); rel.copy(W).invert().multiply(hl.matrixWorld).decompose(p, q, s); push(l, p, q); }
+    const Lm = fin(l);
+    const ch = root.getObjectByName('spine_03'), c = acc(); // and the rifle's mean turn relative to the chest
+    for (let i = 0; i < N; i++) { at(i); W.copy(hr.matrixWorld).multiply(G); rel.copy(ch.matrixWorld).invert().multiply(W).decompose(p, q, s); push(c, p, q); }
+    const Cm = fin(c);
+    m.stopAllAction(); m.uncacheRoot(root);
+    const d = (M) => { const P = new THREE.Vector3(), Qq = new THREE.Quaternion(); M.decompose(P, Qq, new THREE.Vector3()); return { p: P, q: Qq }; };
+    return { G: d(G), L: d(Lm), C: d(Cm) };
+  }
+  function handHeading(root, clip) { // mean direction from the right hand to the left (where the rifle points), as a yaw
+    const m = new THREE.AnimationMixer(root); m.clipAction(clip).play(); const a = new THREE.Vector3(), b = new THREE.Vector3(), d = new THREE.Vector3();
+    for (let i = 0; i < 30; i++) { m.setTime(clip.duration * i / 30); root.updateMatrixWorld(true); root.getObjectByName('hand_l').getWorldPosition(a); root.getObjectByName('hand_r').getWorldPosition(b); d.add(a.sub(b).setY(0).normalize()); }
+    m.stopAllAction(); m.uncacheRoot(root); return Math.atan2(d.x, d.z);
+  }
+  function turnClip(root, clip, ang) { // turn a whole clip about the vertical (the pelvis track and its sway), so its rifle points where the walk's does
+    const R = root.getObjectByName('Root'); R.updateMatrixWorld(true);
+    const axis = UP.clone().applyQuaternion(R.getWorldQuaternion(new THREE.Quaternion()).invert()), q = new THREE.Quaternion().setFromAxisAngle(axis, ang), t = new THREE.Quaternion(), v = new THREE.Vector3();
+    const tr = clip.tracks.find((k) => k.name === 'pelvis.quaternion');
+    for (let i = 0; i < tr.values.length; i += 4) { t.fromArray(tr.values, i).premultiply(q).toArray(tr.values, i); }
+    const s = clip.userData.sway; for (let i = 0; i < s.length; i += 3) { v.fromArray(s, i).applyQuaternion(q).toArray(s, i); }
+  }
+  function stopPhase(root, walk, idle, idleT) {
+    // the walk moment at which a stop (or a start) is seamless: one foot is planted exactly where the idle stance puts it.
+    // That foot stays put through the crossfade (the anchor); only the other foot travels.
+    const m = new THREE.AnimationMixer(root), feet = ['foot_l', 'foot_r'].map((n) => root.getObjectByName(n)), v = new THREE.Vector3();
+    const ai = m.clipAction(idle).play(); m.setTime(idleT); root.updateMatrixWorld(true);
+    const ip = feet.map((b) => b.getWorldPosition(new THREE.Vector3())); ai.stop();
+    m.clipAction(walk).play(); const S = [];
+    for (let i = 0; i < 120; i++) { const t = walk.duration * i / 120; m.setTime(t); root.updateMatrixWorld(true); S.push({ t, p: feet.map((b) => b.getWorldPosition(new THREE.Vector3())) }); }
+    m.stopAllAction(); m.uncacheRoot(root);
+    let best = { err: 1e9 };
+    for (let k = 0; k < 2; k++) { const ymin = Math.min(...S.map((s) => s.p[k].y)); for (const s of S) { if (s.p[k].y > ymin + 0.015) continue; const err = Math.hypot(s.p[k].x - ip[k].x, s.p[k].z - ip[k].z); if (err < best.err) best = { err, t: s.t, foot: k }; } }
+    return best;
+  }
+
+  // ---------- springs ----------
+  const _q1 = new THREE.Quaternion(), _q2 = new THREE.Quaternion(), _q3 = new THREE.Quaternion(), _v1 = new THREE.Vector3(), _v2 = new THREE.Vector3(), _v3 = new THREE.Vector3(), _v4 = new THREE.Vector3(), _m1 = new THREE.Matrix4(), _m2 = new THREE.Matrix4();
+  function qSpring(st, target, k, c, dt, maxAng) { // angular spring: st.q (world) follows target with lag and settle
+    if (!st.init) { st.q.copy(target); st.w.set(0, 0, 0); st.init = true; return st.q; }
+    const h = dt / 2;
+    for (let s = 0; s < 2; s++) {
+      _q1.copy(st.q).invert().premultiply(target); if (_q1.w < 0) { _q1.x = -_q1.x; _q1.y = -_q1.y; _q1.z = -_q1.z; _q1.w = -_q1.w; }
+      const sn = Math.sqrt(Math.max(0, 1 - _q1.w * _q1.w)), ang = 2 * Math.acos(Math.min(1, _q1.w));
+      if (sn > 1e-7) _v1.set(_q1.x / sn * ang, _q1.y / sn * ang, _q1.z / sn * ang); else _v1.set(0, 0, 0);
+      st.w.addScaledVector(_v1, k * h).addScaledVector(st.w, -c * h);
+      const wl = st.w.length(); if (wl > 1e-9) { _q2.setFromAxisAngle(_v2.copy(st.w).multiplyScalar(1 / wl), wl * h); st.q.premultiply(_q2).normalize(); }
+    }
+    const a = st.q.angleTo(target); if (a > maxAng) st.q.rotateTowards(target, a - maxAng);
+    return st.q;
+  }
+  function vSpring(st, rest, k, c, dt) { // a point that follows a moving rest point (inertia), damped relative to the rest point's velocity
+    if (!st.init) { st.p.copy(rest); st.v.set(0, 0, 0); st.prev.copy(rest); st.init = true; return st.p; }
+    _v3.copy(rest).sub(st.prev).multiplyScalar(1 / Math.max(1e-4, dt)); st.prev.copy(rest);
+    const h = dt / 2;
+    for (let s = 0; s < 2; s++) { _v1.copy(rest).sub(st.p).multiplyScalar(k); _v2.copy(st.v).sub(_v3).multiplyScalar(c); st.v.addScaledVector(_v1.sub(_v2), h); st.p.addScaledVector(st.v, h); }
+    return st.p;
+  }
+  const qs = () => ({ q: new THREE.Quaternion(), w: new THREE.Vector3(), init: false });
+  const vs = () => ({ p: new THREE.Vector3(), v: new THREE.Vector3(), prev: new THREE.Vector3(), init: false });
+
+  // ---------- figures ----------
+  // matrices are kept up to date by hand; these read them without walking the parents again
+  const wpos = (o, v) => v.setFromMatrixPosition(o.matrixWorld);
+  const wquat = (o, q) => { _m2.extractRotation(o.matrixWorld); return q.setFromRotationMatrix(_m2); };
+  function setWorldQuat(bone, q) { wquat(bone.parent, _q3).invert(); bone.quaternion.copy(_q3.multiply(q)); }
+  function premulLocal(bone, axis, ang) { if (ang) { _q1.setFromAxisAngle(axis, ang); bone.quaternion.premultiply(_q1); } }
+
+  let INFO = {}, GRIP = {}, STOP = {}, MEANS = {}; const IDLE_T = 0.5;
+  const EDITED = ['pelvis', 'spine_01', 'spine_02', 'spine_03', 'neck_01', 'head', 'clavicle_l', 'clavicle_r', 'upperarm_l', 'upperarm_r', 'lowerarm_l', 'lowerarm_r', 'hand_l', 'hand_r', 'thigh_l', 'thigh_r', 'calf_l', 'calf_r', 'foot_l', 'foot_r'];
+  const figures = [];
+  function makeFigure(template, info, opts) {
+    const root = THREE.SkeletonUtils.clone(template);
+    root.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; o.frustumCulled = false; o.material.envMapIntensity = 0.9; } });
+    const b = {}; root.traverse((o) => { if (o.isBone) b[o.name] = o; });
+    let morph = null; root.traverse((o) => { if (o.morphTargetDictionary && o.morphTargetDictionary.blink !== undefined) morph = o; });
+    const mixer = new THREE.AnimationMixer(root);
+    const r = mulberry32(opts.seed || 1);
+    const v = opts.vary ? {
+      rate: 0.9 + r() * 0.2, phase: r(), stride: 0.92 + r() * 0.14, width: (-1 + r() * 3) * Math.PI / 180, arm: 0.75 + r() * 0.5,
+      load: 0.75 + r() * 0.5, breath: 2.5 + r() * 0.9, scale: 0.96 + r() * 0.07, lean: r(),
+    } : { rate: 1, phase: 0, stride: 1, width: 0, arm: 1, load: 1, breath: 2.9, scale: 1, lean: 0.5 };
+    const f = {
+      root, b, mixer, info, morph, opts, v, W: opts.walk || WALK, rng: mulberry32((opts.seed || 1) * 7 + 3), raw: !!opts.raw,
+      x: opts.x || 0, z: opts.z || 0, yaw: Math.PI / 2, // walking +x
+      cur: 'walk', want: 'walk', acts: {}, lastWalkT: 0, anchor: 0, anchorUntil: -1, t: 0,
+      feet: null, speed: 0,
+      look: { next: 0, ty: 0, tp: 0, gy: 0, gp: 0, buf: [], hy: 0, hp: 0, vy: 0, vp: 0, done: new Set(), nod: 0, nodV: 0, neck: vs() },
+      blink: { next: 1 + r() * 2, at: -9 },
+      sp: { rifle: qs(), helmet: qs(), helmetY: vs(), vest: qs(), vestY: vs(), canteen_l: vs(), canteen_r: vs(), pouch_l: vs(), pouch_r: vs() },
+    };
+    root.scale.setScalar(v.scale);
+    f.clipQ = EDITED.map((n) => b[n].quaternion.clone()); f.clipP = b.pelvis.position.clone();
+    f.acts.walk = mixer.clipAction(clips[f.W]); f.acts.idle = mixer.clipAction(clips[IDLE]);
+    const w = f.acts.walk; w.play(); w.time = (v.phase * clips[f.W].duration); w.timeScale = v.rate;
+    scene.add(root); figures.push(f);
+    return f;
+  }
+
+  // ---------- 6. clip transitions: walk -> idle -> walk, crossfaded at a planted foot ----------
+  function transitions(f, dt) {
+    if (f.want === f.cur) return;
+    const fade = L.trans && !f.raw;
+    const from = f.acts[f.cur], to = f.acts[f.want];
+    if (f.cur === 'walk' && fade) { // wait for a foot at mid-stance
+      const d = clips[f.W].duration, t0 = f.lastWalkT, t1 = (from.time + dt * from.timeScale) % d; // this frame's step
+      const c = STOP[f.W].t, crossed = t0 <= t1 ? c > t0 && c <= t1 : c > t0 || c <= t1;
+      if (!crossed) return;
+    }
+    to.reset(); to.timeScale = f.want === 'walk' ? f.v.rate : 1; to.setEffectiveWeight(1);
+    if (f.want === 'walk') to.time = STOP[f.W].t; else to.time = IDLE_T;
+    if (fade) { f.anchor = STOP[f.W].foot; f.anchorUntil = f.t + (f.want === 'walk' ? 0.4 : 0.45) + 0.1; }
+    to.play();
+    if (fade) from.crossFadeTo(to, f.want === 'walk' ? 0.4 : 0.45, false); else from.stop();
+    f.cur = f.want;
+  }
+
+  // ---------- the per-frame motion stack ----------
+  function updateFigure(f, dt, t) {
+    const b = f.b, A = f.info.axes, on = (k) => L[k] && !f.raw; f.t = t;
+    const walkW = f.acts.walk.isRunning() ? f.acts.walk.getEffectiveWeight() : 0;
+    // three.js's PropertyMixer skips writing a bone whose clip value did not change since last frame (a still pose, a constant
+    // track), so last frame's layered edits would pile up. Put back the clip's own values first.
+    for (let i = 0; i < EDITED.length; i++) b[EDITED[i]].quaternion.copy(f.clipQ[i]);
+    b.pelvis.position.copy(f.clipP);
+    transitions(f, dt);
+    f.mixer.update(dt);
+    for (let i = 0; i < EDITED.length; i++) f.clipQ[i].copy(b[EDITED[i]].quaternion);
+    f.clipP.copy(b.pelvis.position);
+    if (f.cur === 'walk') f.lastWalkT = f.acts.walk.time % clips[f.W].duration;
+
+    // 7. hip sway: the residual hip motion the spike's retarget throws away, weighted per playing action
+    if (on('sway')) for (const k in f.acts) { const a = f.acts[k]; if (!a.isRunning()) continue; const w = a.getEffectiveWeight(); if (w > 0) b.pelvis.position.addScaledVector(sampleSway(a.getClip(), a.time, _v1), w * (on('load') ? 1.15 : 1)); }
+
+    // 5. variation: stride, stride width and arm swing scaled about the walk's mean pose (blended out as the walk fades)
+    if (on('vary') && walkW > 0) {
+      const M = MEANS[f.W], s = 1 + (f.v.stride - 1) * walkW, arm = 1 + (f.v.arm - 1) * walkW;
+      for (const n of ['thigh_l', 'thigh_r', 'calf_l', 'calf_r', 'foot_l', 'foot_r']) b[n].quaternion.copy(_q1.copy(M[n]).slerp(b[n].quaternion, s));
+      for (const n of ['clavicle_r', 'upperarm_r', 'lowerarm_r']) b[n].quaternion.copy(_q1.copy(M[n]).slerp(b[n].quaternion, arm));
+      premulLocal(b.thigh_l, A.thigh_l.f, f.v.width * walkW); premulLocal(b.thigh_r, A.thigh_r.f, -f.v.width * walkW);
+      premulLocal(b.foot_l, A.foot_l.f, -f.v.width * walkW); premulLocal(b.foot_r, A.foot_r.f, f.v.width * walkW);
+    }
+    // 4. load and fatigue: forward lean from the waist, knees a little bent, shoulders rolled forward under the vest, breathing
+    if (on('load')) {
+      const k = f.v.load, lean = (0.055 + 0.03 * f.v.lean) * k;
+      premulLocal(b.spine_01, A.spine_01.r, -lean * 0.55); premulLocal(b.spine_02, A.spine_02.r, -lean * 0.45);
+      premulLocal(b.neck_01, A.neck_01.r, lean * 0.6); premulLocal(b.head, A.head.r, lean * 0.25);
+      const kb = 0.05 * k * (0.4 + 0.6 * walkW); // knee bend under the pack
+      for (const s of ['_l', '_r']) { premulLocal(b['thigh' + s], A['thigh' + s].r, kb); premulLocal(b['calf' + s], A['calf' + s].r, -kb * 2); premulLocal(b['foot' + s], A['foot' + s].r, kb); }
+      premulLocal(b.clavicle_l, A.clavicle_l.u, -0.09 * k); premulLocal(b.clavicle_r, A.clavicle_r.u, 0.09 * k);
+      premulLocal(b.clavicle_l, A.clavicle_l.f, -0.04 * k); premulLocal(b.clavicle_r, A.clavicle_r.f, 0.04 * k);
+      const ph = (t / f.v.breath + f.v.phase) % 1, br = ph < 0.42 ? smooth(0, 0.42, ph) : 1 - smooth(0.42, 1, ph); // quicker in, slower out
+      premulLocal(b.spine_03, A.spine_03.r, 0.022 * k * br); premulLocal(b.neck_01, A.neck_01.r, -0.012 * k * br);
+      premulLocal(b.clavicle_l, A.clavicle_l.f, 0.02 * k * br); premulLocal(b.clavicle_r, A.clavicle_r.f, -0.02 * k * br);
+    }
+
+    // root: speed from the planted foot (no slide whatever the stride, rate or blend), or the clip's own speed for the raw clip
+    const root = f.root;
+    root.position.set(f.x, groundY(f.x, f.z), f.z); root.rotation.y = f.yaw; root.updateMatrixWorld(true);
+    const sc = f.v.scale, feet = ['foot_l', 'foot_r', 'ball_l', 'ball_r'].map((n) => root.worldToLocal(wpos(b[n], new THREE.Vector3())));
+    let vx = 0;
+    if (on('trans')) {
+      if (f.feet) { // the root moves so the planted foot stays where it is: forward and sideways, in walks, stops and starts alike
+        const ymin = Math.min(...feet.map((p) => p.y)); let sw = 0, sz = 0, sx = 0;
+        const anch = t < f.anchorUntil && Math.min(feet[f.anchor].y, feet[f.anchor + 2].y) - ymin < 0.02; // the anchor holds while it is down
+        for (let i = 0; i < 2; i++) { const yl = Math.min(feet[i].y, feet[i + 2].y), w = anch ? (i === f.anchor ? 1 : 0) : 1 - smooth(0.006, 0.03, yl - ymin); sw += w; sz += w * ((feet[i].z + feet[i + 2].z) - (f.feet[i].z + f.feet[i + 2].z)) / 2; sx += w * ((feet[i].x + feet[i + 2].x) - (f.feet[i].x + f.feet[i + 2].x)) / 2; }
+        f.speed = -sz / Math.max(1e-4, sw) * sc / Math.max(1e-4, dt); vx = -sx / Math.max(1e-4, sw) * sc / Math.max(1e-4, dt);
+      }
+    } else { const cc = f.acts[f.cur].getClip(); f.speed = f.cur === 'walk' ? cc.userData.speed * f.acts.walk.timeScale * sc : 0; }
+    f.feet = feet;
+    f.x += (Math.sin(f.yaw) * f.speed + Math.cos(f.yaw) * vx) * dt; f.z += (Math.cos(f.yaw) * f.speed - Math.sin(f.yaw) * vx) * dt;
+    root.position.set(f.x, groundY(f.x, f.z), f.z);
+    { let dmin = Infinity; for (let i = 0; i < 4; i++) dmin = Math.min(dmin, feet[i].y - tposeRef[['foot_l', 'foot_r', 'ball_l', 'ball_r'][i]].p.y); root.position.y -= dmin * sc; }
+    root.updateMatrixWorld(true);
+
+    // 3. head and eyes: a gaze that scans the ridge, holds, glances at the footing; the head follows 120 ms later; a nod on each step
+    if (on('look')) look(f, dt, t); else if (f.morph && !f.raw) f.morph.morphTargetInfluences[f.morph.morphTargetDictionary.blink] = 0;
+
+    // 1. the rifle: fixed in the right hand, with a sprung lag; the left hand pinned to the handguard by two-bone IK
+    const hr = b.hand_r, hl = b.hand_l, pr = wpos(hr, _v1), pl = wpos(hl, _v2).clone();
+    if (on('rifle') && f.opts.carry) patrolCarry(f, dt);
+    else if (on('rifle')) {
+      const wi = f.acts.idle.isRunning() ? f.acts.idle.getEffectiveWeight() : 0, gw = GRIP[f.W], gi = GRIP.idle, s = wi / Math.max(1e-4, wi + walkW);
+      const Gp = R_.Gp.copy(gw.G.p).lerp(gi.G.p, s), Gq = R_.Gq.copy(gw.G.q).slerp(gi.G.q, s);
+      // the rifle's aim: mostly carried by the chest (a slung, braced rifle turns with the torso), partly by the right hand;
+      // the clip's hands bob against each other every step and would see-saw the barrel
+      const Cq = R_.Cq.copy(gw.C.q).slerp(gi.C.q, s);
+      const target = wquat(hr, new THREE.Quaternion()).multiply(Gq).slerp(wquat(b.spine_03, _q1).multiply(Cq), CHEST);
+      const q = qSpring(f.sp.rifle, target, 355, 17, dt, 0.09);
+      const handQ = _q1.copy(q).multiply(_q3.copy(Gq).invert()); // the hand follows the rifle at the wrist
+      setWorldQuat(hr, handQ); hr.updateMatrixWorld(true);
+      const W = _m1.compose(wpos(hr, new THREE.Vector3()), q, new THREE.Vector3(1, 1, 1)); W.multiply(_m2.compose(Gp, new THREE.Quaternion(), new THREE.Vector3(1, 1, 1)));
+      placeRifle(f, W);
+      const Lp = R_.Lp.copy(gw.L.p).lerp(gi.L.p, s).applyMatrix4(W), Lq = new THREE.Quaternion().copy(gw.L.q).slerp(gi.L.q, s).premultiply(q);
+      twoBoneIK(b.upperarm_l, b.lowerarm_l, hl, Lp);
+      setWorldQuat(hl, Lq); hl.updateMatrixWorld(true);
+    } else {
+      const d = pr.distanceTo(pl), W = new THREE.Matrix4();
+      if (d > 0.12 && d < 0.75) spikeAim(pr, pl, W); else W.copy(hr.matrixWorld).multiply(_m2.compose(GRIP[f.W].G.p, GRIP[f.W].G.q, new THREE.Vector3(1, 1, 1)));
+      f.sp.rifle.init = false;
+      placeRifle(f, W);
+    }
+
+    // 2. kit: canteens and pouches on sprung pendulums, the helmet lagging the head, the vest settling on the shoulders
+    if (on('kit')) kitLayer(f, dt); else for (const n of ['canteen_l', 'canteen_r', 'pouch_l', 'pouch_r', 'helmet', 'vest']) { b[n].quaternion.identity(); b[n].position.copy(f.info.local[n]); b[n].updateMatrixWorld(true); f.sp[n] && (f.sp[n].init = false); }
+  }
+  const R_ = { Gp: new THREE.Vector3(), Gq: new THREE.Quaternion(), Cq: new THREE.Quaternion(), Lp: new THREE.Vector3() }; const CHEST = Number(params.get('chest') || 0.7); // scratch for the rifle layer (the helpers use _v*, _q*)
+  // patrol carry (a stand-in for a plain walk with the rifle low in one hand): the clip's legs, the arms rebuilt as hanging
+  // pendulums that swing against the opposite leg with a little lag; the right hand holds the rifle by the pistol grip,
+  // muzzle forward and down, the left arm swings free
+  const PC = { fwd: new THREE.Vector3(), right: new THREE.Vector3(), down: new THREE.Vector3(0, -1, 0), d1: new THREE.Vector3(), d2: new THREE.Vector3(), a: new THREE.Vector3(), c: new THREE.Vector3() };
+  function patrolCarry(f, dt) {
+    const b = f.b, st = f.carry || (f.carry = { l: 0, r: 0 });
+    PC.fwd.set(Math.sin(f.yaw), 0, Math.cos(f.yaw)); PC.right.crossVectors(PC.fwd, UP);
+    const lean = (side) => { wpos(b['thigh' + side], PC.a); wpos(b['calf' + side], PC.c); return PC.c.sub(PC.a).normalize().dot(PC.fwd); };
+    const sl = lean('_l'), sr = lean('_r'), k = 1 - Math.exp(-dt / 0.07); // the arm follows the opposite leg, 70 ms behind
+    st.l += (sr * 0.75 - st.l) * k; st.r += (sl * 0.45 - st.r) * k;
+    const arm = (side, sw, out, bend) => {
+      const up = b['upperarm' + side], lo = b['lowerarm' + side], hd = b['hand' + side], sgn = side === '_r' ? 1 : -1;
+      PC.d1.copy(PC.down).addScaledVector(PC.fwd, Math.tan(sw) + 0.05).addScaledVector(PC.right, sgn * out).normalize();
+      rotateBoneWorld(up, _v3.subVectors(wpos(lo, _b), wpos(up, _a)).normalize(), PC.d1);
+      PC.d2.copy(PC.down).addScaledVector(PC.fwd, Math.tan(sw + bend + 0.25 * Math.max(0, sw))).addScaledVector(PC.right, sgn * out * 0.6).normalize();
+      rotateBoneWorld(lo, _v3.subVectors(wpos(hd, _c), wpos(lo, _b)).normalize(), PC.d2);
+    };
+    arm('_l', st.l, 0.1, 0.22); arm('_r', st.r, 0.2, 0.32);
+    // the rifle: pistol grip in the right palm, muzzle forward and down, sprung so it trails the hand
+    const grip = wpos(b.hand_r, new THREE.Vector3()).addScaledVector(PC.d2, 0.07);
+    const barrel = PC.a.copy(PC.fwd).addScaledVector(PC.down, 0.32).addScaledVector(PC.right, 0.06).normalize();
+    const A = aimFrame(grip, grip.clone().add(barrel), UP).multiply(rifle.Cinv);
+    const target = new THREE.Quaternion().setFromRotationMatrix(_m1.extractRotation(A));
+    const q = qSpring(f.sp.rifle, target, 200, 9, dt, 0.25);
+    placeRifle(f, _m1.compose(new THREE.Vector3().setFromMatrixPosition(A), q, new THREE.Vector3(1, 1, 1)));
+  }
+  function placeRifle(f, W) {
+    const rb = f.b.rifle; _m2.copy(rb.parent.matrixWorld).invert().multiply(W); _m2.decompose(rb.position, rb.quaternion, rb.scale); rb.updateMatrixWorld(true);
+  }
+  const _a = new THREE.Vector3(), _b = new THREE.Vector3(), _c = new THREE.Vector3(), _d = new THREE.Vector3(), _n = new THREE.Vector3(), _e = new THREE.Vector3();
+  function rotateBoneWorld(bone, from, to) { _q1.setFromUnitVectors(from, to); wquat(bone, _q2); _q2.premultiply(_q1); setWorldQuat(bone, _q2); bone.updateMatrixWorld(true); }
+  function twoBoneIK(up, lo, hand, target) {
+    wpos(up, _a); wpos(lo, _b); wpos(hand, _c);
+    const l1 = _a.distanceTo(_b), l2 = _b.distanceTo(_c);
+    _d.subVectors(target, _a); const d = clamp(_d.length(), Math.abs(l1 - l2) + 1e-3, l1 + l2 - 1e-4); _d.normalize();
+    const cosA = clamp((l1 * l1 + d * d - l2 * l2) / (2 * l1 * d), -1, 1), sinA = Math.sqrt(1 - cosA * cosA);
+    _n.subVectors(_b, _a).y -= 0.04; _n.addScaledVector(_d, -_n.dot(_d)).normalize(); // the clip's own elbow, nudged down, is the pole
+    _e.copy(_a).addScaledVector(_d, l1 * cosA).addScaledVector(_n, l1 * sinA);
+    rotateBoneWorld(up, _v3.subVectors(_b, _a).normalize(), _v4.subVectors(_e, _a).normalize());
+    wpos(lo, _b); wpos(hand, _c);
+    rotateBoneWorld(lo, _v3.subVectors(_c, _b).normalize(), _v4.subVectors(target, _b).normalize());
+  }
+
+  function kitLayer(f, dt) {
+    const b = f.b, I = f.info, sp = f.sp;
+    // canteens and pouches: a bob point on a spring around where the part hangs at rest; inertia does the swinging
+    for (const [n, k, c, max, len] of [['canteen_l', 90, 4.5, 0.26, 0.11], ['canteen_r', 90, 4.5, 0.26, 0.11], ['pouch_l', 360, 13, 0.08, 0.07], ['pouch_r', 360, 13, 0.08, 0.07]]) {
+      const bone = b[n], par = bone.parent;
+      bone.quaternion.identity(); bone.position.copy(I.local[n]); bone.updateMatrixWorld(true);
+      const piv = wpos(bone, _v4).clone(), pq = wquat(par, new THREE.Quaternion());
+      const restW = I.restLocal[n].clone().applyQuaternion(pq);
+      const p = vSpring(sp[n], _v1.copy(piv).addScaledVector(restW, len), k, c, dt);
+      const dir = p.clone().sub(piv).normalize();
+      // the hip stops it swinging inward
+      const outW = _v2.set(piv.x - wpos(b.pelvis, _v3).x, 0, piv.z - _v3.z).normalize(), off = dir.clone().sub(restW), inn = off.dot(outW);
+      if (inn < 0) dir.addScaledVector(outW, -inn * 0.7).normalize();
+      const ang = dir.angleTo(restW); if (ang > max) dir.lerp(restW, 1 - max / ang).normalize();
+      const dl = dir.applyQuaternion(pq.invert());
+      bone.quaternion.setFromUnitVectors(I.restLocal[n], dl); bone.updateMatrixWorld(true);
+    }
+    // helmet: its turn follows the head's about 80 ms late and settles; it also drops a few mm against each footfall
+    {
+      const hb = b.helmet, head = b.head, hq = wquat(head, new THREE.Quaternion());
+      const q = qSpring(sp.helmet, hq, 625, 30, dt, 0.06);
+      hb.position.copy(I.local.helmet); hb.quaternion.copy(hq.clone().invert().multiply(q)); hb.updateMatrixWorld(true);
+      const piv = wpos(hb, new THREE.Vector3()), p = vSpring(sp.helmetY, piv, 900, 18, dt);
+      const dy = clamp(p.y - piv.y, -0.006, 0.006), ws = head.matrixWorld.getMaxScaleOnAxis();
+      hb.position.add(_v1.set(0, dy / ws, 0).applyQuaternion(hq.invert())); hb.updateMatrixWorld(true);
+    }
+    // vest: lags the chest's roll and twist a little (shoulders shift against the body), and settles on each step
+    {
+      const vb = b.vest, sp3 = b.spine_03, sq = wquat(sp3, new THREE.Quaternion());
+      const q = qSpring(sp.vest, sq, 355, 15, dt, 0.035);
+      vb.position.copy(I.local.vest); vb.quaternion.copy(sq.clone().invert().multiply(q)); vb.updateMatrixWorld(true);
+      const piv = wpos(vb, new THREE.Vector3()), p = vSpring(sp.vestY, piv, 630, 15, dt);
+      const dy = clamp(p.y - piv.y, -0.005, 0.005), ws = sp3.matrixWorld.getMaxScaleOnAxis();
+      vb.position.add(_v1.set(0, dy / ws, 0).applyQuaternion(sq.invert())); vb.updateMatrixWorld(true);
+    }
+  }
+
+  function look(f, dt, t) {
+    const b = f.b, Lk = f.look, A = f.info.axes, r = f.rng;
+    const walking = f.cur === 'walk';
+    if (t >= Lk.next) { // a new fixation
+      let dur;
+      const ahead = ROUGH.map(([x0]) => x0 - f.x).find((d) => d > 0.8 && d < 3.2);
+      const patch = ROUGH.findIndex(([x0]) => x0 - f.x > 0.8 && x0 - f.x < 3.2);
+      const hero = f.opts.hero;
+      if (walking && hero && patch >= 0 && !Lk.done.has(patch)) { Lk.done.add(patch); Lk.ty = (r() - 0.5) * 0.12; Lk.tp = -Math.atan2(1.5, ahead) - 0.05; dur = 0.7 + r() * 0.4; }
+      else if (walking && !hero && r() < 0.12) { Lk.ty = (r() - 0.5) * 0.2; Lk.tp = -0.45 - r() * 0.15; dur = 0.5 + r() * 0.4; }
+      else if (r() < 0.22) { dur = 1.4 + r() * 1.6; } // a hold: keep looking where he is looking
+      else if (walking) { Lk.ty = r() < 0.75 ? 0.05 + r() * 0.75 : -0.1 - r() * 0.35; Lk.tp = 0.03 + r() * 0.1; dur = 0.8 + r() * 1.6; }
+      else { Lk.ty = -0.8 + r() * 1.9; Lk.tp = -0.05 + r() * 0.15; dur = 0.9 + r() * 1.2; } // stopped: a wider look around
+      if (Math.abs(Lk.ty - Lk.gy) > 0.35 && r() < 0.6) f.blink.next = Math.min(f.blink.next, t + 0.03); // a blink rides on a big turn
+      Lk.next = t + dur;
+    }
+    const sa = 1 - Math.exp(-dt / 0.035); Lk.gy += (Lk.ty - Lk.gy) * sa; Lk.gp += (Lk.tp - Lk.gp) * sa; // saccade
+    Lk.buf.push([t, Lk.gy, Lk.gp]); while (Lk.buf.length > 2 && Lk.buf[1][0] <= t - 0.12) Lk.buf.shift();
+    const hyT = Lk.buf[0][1] * 0.8, hpT = Lk.buf[0][2] * 0.65, w = 6.5; // the head takes most of the turn, 120 ms behind the eyes
+    Lk.vy += (w * w * (hyT - Lk.hy) - 2 * w * Lk.vy) * dt; Lk.hy += Lk.vy * dt;
+    Lk.vp += (w * w * (hpT - Lk.hp) - 2 * w * Lk.vp) * dt; Lk.hp += Lk.vp * dt;
+    // the nod: the head's pitch springs against the neck's vertical acceleration (follow-through on each footfall)
+    const np = wpos(b.neck_01, new THREE.Vector3()), st = Lk.neck;
+    if (!st.init) { st.p.copy(np); st.v.set(0, 0, 0); st.init = true; }
+    const vy = (np.y - st.p.y) / Math.max(1e-4, dt), ay = (vy - st.v.y) / Math.max(1e-4, dt); st.p.copy(np); st.v.y = vy;
+    Lk.nodV += (-247 * Lk.nod - 15.7 * Lk.nodV - clamp(ay, -12, 12) * 1.6) * dt; Lk.nod = clamp(Lk.nod + Lk.nodV * dt, -0.05, 0.05);
+    premulLocal(b.neck_01, A.neck_01.u, Lk.hy * 0.4); premulLocal(b.head, A.head.u, Lk.hy * 0.6);
+    premulLocal(b.neck_01, A.neck_01.r, Lk.hp * 0.35); premulLocal(b.head, A.head.r, Lk.hp * 0.65 + Lk.nod);
+    b.neck_01.updateMatrixWorld(true);
+    // eyes make up the rest of the gaze
+    if (f.b.eye_l && f.info.local.eye_l.lengthSq() > 0) {
+      const ey = clamp(Lk.gy - Lk.hy, -0.45, 0.45), ep = clamp(Lk.gp - Lk.hp, -0.3, 0.3);
+      for (const e of [b.eye_l, b.eye_r]) { e.quaternion.setFromAxisAngle(A.eye.u, ey); _q1.setFromAxisAngle(A.eye.r, ep); e.quaternion.multiply(_q1); e.updateMatrixWorld(true); }
+    }
+    // blinks: every 2 to 6 s, sometimes double, and on big turns
+    if (f.morph) {
+      const B = f.blink; if (t >= B.next) { B.at = t; B.next = t + (r() < 0.15 ? 0.32 : 2 + r() * 4); }
+      const bt = t - B.at, v = bt < 0 ? 0 : bt < 0.1 ? Math.pow(bt / 0.1, 1.5) : bt < 0.28 ? 1 - Math.pow((bt - 0.1) / 0.18, 0.8) : 0;
+      f.morph.morphTargetInfluences[f.morph.morphTargetDictionary.blink] = v;
+    }
+  }
+
+  // ---------- views ----------
+  let hero = null, rawFig = null, layFig = null; const crowd = [], srcFigs = [];
+  const heroScript = params.has('idle') ? () => 'idle' : (t) => (t >= 4.3 && t < 7.4 ? 'idle' : 'walk');
+  const cam = { x: null };
+  function setView(v) {
+    VIEW = v;
+    for (const f of figures) f.root.visible = false;
+    const show = activeFigs();
+    for (const f of show) f.root.visible = true;
+    document.getElementById('split').style.display = VIEW === 'compare' ? 'block' : 'none';
+    document.getElementById('lblL').textContent = VIEW === 'compare' ? 'Raw Mixamo clip (as walk.mp4)' : '';
+    document.getElementById('lblR').textContent = VIEW === 'compare' ? 'With the motion layers' : '';
+    document.querySelectorAll('.src').forEach((e) => { e.style.display = VIEW === 'sources' ? 'block' : 'none'; });
+    if (VIEW === 'sources') document.getElementById('lblL').textContent = '';
+    cam.x = null;
+  }
+  function activeFigs() { return VIEW === 'hero' ? [hero] : VIEW === 'compare' ? [rawFig, layFig] : VIEW === 'sources' ? srcFigs : crowd; }
+  function layerText() { return KEYS.map((k, i) => `${i + 1} ${NAMES[k]} ${L[k] ? 'on' : 'off'}`).join(' · '); }
+  addEventListener('keydown', (e) => {
+    const k = e.key.toLowerCase();
+    const i = '1234567'.indexOf(k); if (i >= 0) L[KEYS[i]] = !L[KEYS[i]];
+    else if (k === '0') KEYS.forEach((kk) => { L[kk] = false; }); else if (k === 'a') KEYS.forEach((kk) => { L[kk] = true; });
+    else if (k === 'h') setView('hero'); else if (k === 'v') setView('compare'); else if (k === 'c') setView('crowd'); else if (k === 's') setView('sources');
+  });
+
+  let simT = 0; const cost = { ms: 0, n: 0, avg: 0 };
+  function step(dt) {
+    simT += dt; wind.value = simT;
+    const active = activeFigs();
+    if (VIEW === 'hero') hero.want = heroScript(simT);
+    const t0 = performance.now();
+    for (const f of active) updateFigure(f, dt, simT);
+    cost.ms += performance.now() - t0; cost.n++;
+  }
+  function placeCameras() {
+    if (VIEW === 'hero') {
+      if (cam.x === null || CAMP) cam.x = hero.x; cam.x += (hero.x - cam.x) * 0.12;
+      const gy = groundY(cam.x, 0); camera.aspect = innerWidth / innerHeight;
+      const CC = CAMP || [6.0, 1.62, 0.95, 28, 2.4]; camera.fov = CC[3]; camera.position.set(cam.x + CC[4], gy + CC[1], CC[0]); camera.lookAt(cam.x + 0.25, gy + CC[2], 0);
+      aimSun(hero.x, 0, 3);
+    } else if (VIEW === 'compare') {
+      if (cam.x === null) cam.x = rawFig.x;
+      for (const [c, f] of [[camera, rawFig], [camera2, layFig]]) { const gy = groundY(f.x, 0); c.fov = 30; c.aspect = (innerWidth / 2) / innerHeight; c.position.set(f.x + 1.5, gy + 1.62, 4.3); c.lookAt(f.x + 0.1, gy + 0.95, 0); c.updateProjectionMatrix(); }
+      aimSun(layFig.x, 0, 3);
+    } else if (VIEW === 'sources') {
+      srcFigs.forEach((f, i) => { const c = srcCams[i], gy = groundY(f.x, 0); c.fov = 30; c.aspect = (innerWidth / 3) / innerHeight; c.position.set(f.x + 1.6, gy + 1.62, 5.2); c.lookAt(f.x + 0.1, gy + 0.92, 0); c.updateProjectionMatrix(); });
+      aimSun(srcFigs[1].x, 0, 4);
+    } else {
+      const mx = crowd.reduce((s, f) => s + f.x, 0) / crowd.length;
+      if (cam.x === null) cam.x = mx; cam.x += (mx - cam.x) * 0.05;
+      camera.fov = 36; camera.aspect = innerWidth / innerHeight; camera.position.set(cam.x + 7, 3.4, 15); camera.lookAt(cam.x + 0.5, 0.6, -0.3);
+      aimSun(cam.x, 0, 13);
+    }
+    camera.updateProjectionMatrix();
+  }
+  function render() {
+    const W = innerWidth, H = innerHeight;
+    renderer.setScissorTest(false); renderer.setViewport(0, 0, W, H); renderer.clear();
+    if (VIEW === 'compare') {
+      renderer.setScissorTest(true);
+      rawFig.root.visible = true; layFig.root.visible = false; renderer.setViewport(0, 0, W / 2, H); renderer.setScissor(0, 0, W / 2, H); renderer.render(scene, camera);
+      rawFig.root.visible = false; layFig.root.visible = true; renderer.setViewport(W / 2, 0, W / 2, H); renderer.setScissor(W / 2, 0, W / 2, H); renderer.render(scene, camera2);
+      rawFig.root.visible = true; renderer.setScissorTest(false);
+    } else if (VIEW === 'sources') {
+      renderer.setScissorTest(true);
+      srcFigs.forEach((f, i) => { srcFigs.forEach((g, j) => { g.root.visible = i === j; }); const x = Math.round(W * i / 3), w = Math.round(W * (i + 1) / 3) - x; renderer.setViewport(x, 0, w, H); renderer.setScissor(x, 0, w, H); renderer.render(scene, srcCams[i]); });
+      srcFigs.forEach((g) => { g.root.visible = true; }); renderer.setScissorTest(false);
+    } else renderer.render(scene, camera);
+  }
+
+  const hud = document.getElementById('fps'), lay = document.getElementById('layers');
+  let last = null, frames = 0, fpsT = 0, fps = 0;
+  function frame(now) {
+    requestAnimationFrame(frame);
+    if (!hero) return;
+    if (last === null) last = now;
+    const dt = Math.min(0.1, Math.max(0.001, (now - last) / 1000)); last = now;
+    step(dt); placeCameras(); render();
+    frames++; fpsT += dt; if (fpsT >= 0.5) { fps = Math.round(frames / fpsT); frames = 0; fpsT = 0; cost.avg = cost.ms / Math.max(1, cost.n); cost.ms = 0; cost.n = 0; }
+    const ri = renderer.info.render;
+    hud.textContent = `${fps} fps · ${ri.triangles.toLocaleString('en-US')} tris · ${ri.calls} draws · motion ${cost.avg.toFixed(2)} ms · ${VIEW}`;
+    lay.textContent = layerText();
+  }
+
+  // ---------- start ----------
+  Promise.all([loadGltf('marine.glb'), loadGltf('marine-lod.glb'), loadFbx(ANIM + encodeURIComponent('Rifle Walk') + '.fbx'), loadFbx(ANIM + encodeURIComponent(IDLE) + '.fbx'),
+    loadFbx(ANIM + encodeURIComponent('Walk With Rifle') + '.fbx')]).then(([gH, gL, fWalk, fIdle, fAlt]) => {
+    const tH = gH.scene, tL = gL.scene;
+    captureTpose(tH, gH.animations.find((a) => a.name === 'TPose'));
+    bindRest = readBind(fWalk);
+    clips['Rifle Walk'] = retarget(fWalk, fWalk.animations[0], 'Rifle Walk', tH);
+    clips[IDLE] = retarget(fIdle, fIdle.animations[0], IDLE, tH);
+    clips['Walk With Rifle'] = retarget(fAlt, fAlt.animations[0], 'Walk With Rifle', tH);
+    clips[IDLE].userData.turn = handHeading(tH, clips[WALK]) - handHeading(tH, clips[IDLE]); turnClip(tH, clips[IDLE], clips[IDLE].userData.turn);
+    const WALKS = ['Rifle Walk', 'Walk With Rifle'];
+    for (const w of WALKS) MEANS[w] = clipMeans(clips[w]);
+    setupRifleFrame(tH);
+    INFO.hero = analyse(tH, true); rigFigure(tH, INFO.hero);
+    INFO.lod = analyse(tL, false); rigFigure(tL, INFO.lod);
+    for (const w of WALKS) GRIP[w] = computeGrip(tH, clips[w], 0, clips[w].duration);
+    GRIP.idle = computeGrip(tH, clips[IDLE], 0.5, Math.min(clips[IDLE].duration, 4.0));
+    for (const w of WALKS) STOP[w] = stopPhase(tH, clips[w], clips[IDLE], IDLE_T);
+    hero = makeFigure(tH, INFO.hero, { seed: 11, hero: true, x: -7.5, vary: false });
+    rawFig = makeFigure(tH, INFO.hero, { seed: 12, raw: true, x: -4 });
+    layFig = makeFigure(tH, INFO.hero, { seed: 11, hero: true, x: -4 });
+    srcFigs.push(makeFigure(tH, INFO.hero, { seed: 11, hero: true, x: -4, walk: 'Rifle Walk' }), makeFigure(tH, INFO.hero, { seed: 11, hero: true, x: -4, walk: 'Walk With Rifle' }), makeFigure(tH, INFO.hero, { seed: 11, hero: true, x: -4, walk: 'Walk With Rifle', carry: true }));
+    const rr = mulberry32(5);
+    for (let i = 0; i < 30; i++) { const row = Math.floor(i / 5), col = i % 5; crowd.push(makeFigure(tL, INFO.lod, { seed: 100 + i * 13, vary: true, x: -row * 3.0 + (rr() - 0.5) * 1.2 - 2, z: (col - 2) * 1.75 + (rr() - 0.5) * 0.5 })); }
+    window.__study = { rifleC: rifle.C, markerDist: rifle.len, clips, INFO, GRIP, STOP, figures, hero, crowd, L, cost, scene, renderer, stats: () => ({ walk: clips[WALK].userData, idle: clips[IDLE].userData, dur: [clips[WALK].duration, clips[IDLE].duration] }) };
+    setView(VIEW);
+    if (T0 > 0) { const n = Math.round(T0 * 30); for (let i = 0; i < n; i++) step(1 / 30); }
+    window.__ready = true;
+  }).catch((e) => { console.error(e); hud.textContent = 'load failed: ' + e.message; window.__ready = true; });
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

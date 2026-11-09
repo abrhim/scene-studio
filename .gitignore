@@ -2,3 +2,9 @@ node_modules/
 scenes/*/.scratch/
 scenes/_test/
 .DS_Store
+
+# third-party preview images from Sketchfab etc. are look-only references, not ours to redistribute
+scenes/himmer-1968/references/thumbs/
+scenes/himmer-1968/references/contact-sheet.html
+# scratch at any depth under a scene
+scenes/**/.scratch/

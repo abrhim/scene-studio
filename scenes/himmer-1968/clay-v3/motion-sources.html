@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Motion Sources Study</title>
+<link rel="icon" href="data:,">
+<style>
+  html, body { margin: 0; height: 100%; background: #2a2620; overflow: hidden; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
+  canvas { display: block; }
+  .hud { position: absolute; font: 500 13px/1.3 system-ui, -apple-system, "Segoe UI", sans-serif; color: rgba(250, 240, 214, 0.85); pointer-events: none; text-shadow: 0 1px 2px rgba(0, 0, 0, 0.7); }
+  #fps { right: 16px; top: 12px; text-align: right; font-variant-numeric: tabular-nums; }
+  .lbl { bottom: 22px; width: 33.33%; text-align: center; }
+  .lbl b { display: inline-block; font: 600 19px/1.15 Georgia, serif; color: #fdf6e2; padding: 6px 14px 5px; border-radius: 999px; background: rgba(40, 34, 30, 0.74); border: 1px solid rgba(240, 212, 138, 0.7); }
+  .lbl span { display: block; margin-top: 6px; }
+  .bar { position: absolute; top: 0; bottom: 0; width: 2px; background: rgba(20, 18, 14, 0.75); }
+  #beh { left: 16px; top: 12px; font: 600 16px/1.2 Georgia, serif; color: #fdf6e2; }
+</style>
+</head>
+<body>
+<div id="beh" class="hud"></div>
+<div id="fps" class="hud"></div>
+<div class="bar" style="left:33.33%"></div><div class="bar" style="left:66.67%"></div>
+<div class="hud lbl" style="left:0"><b>A · studio procedural</b><span>clay v2 rig, clay-v2.js poses</span></div>
+<div class="hud lbl" style="left:33.33%"><b>B · Mixamo + motion layers</b><span>clay v3 rig, all eight layers</span></div>
+<div class="hud lbl" style="left:66.67%"><b>C · Mixamo raw</b><span>clay v3 rig, no layers</span></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/libs/fflate.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/FBXLoader.js"></script>
+<script src="figkit.js"></script>
+<script src="../style-study/clay-v2.js"></script>
+<script src="clay-v3.js"></script>
+<script src="motion.js"></script>
+<script src="grass.js"></script>
+<script>
+// Three ways to move the same clay rifleman (face 1), same camera, same ground, one panel each.
+// ?beh=walk|idle|kneel|fall (keys 1-4)  ?bench=1 measures the animation cost of 30 figures of A and of B
+(function () {
+  'use strict';
+  window.__ready = false;
+  const params = new URLSearchParams(location.search);
+  const FK = window.FK, V2 = window.V2, V3 = window.V3, CM = window.CM, V = FK.V, lin = FK.lin, TAU = Math.PI * 2;
+  let BEH = params.get('beh') || 'walk';
+  // ---------- renderer: ACES, sRGB, a warm key low in the south-west, warm ground bounce, a warm rim from behind ----------
+  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setPixelRatio(Math.min(2, devicePixelRatio));
+  renderer.setSize(innerWidth, innerHeight);
+  renderer.outputEncoding = THREE.sRGBEncoding;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.1;
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  document.body.appendChild(renderer.domElement);
+  const scene = new THREE.Scene();
+  {
+    const c = document.createElement('canvas'); c.width = 4; c.height = 512;
+    const g = c.getContext('2d'), gr = g.createLinearGradient(0, 0, 0, 512);
+    gr.addColorStop(0, '#6a98c6'); gr.addColorStop(0.32, '#b2c9da'); gr.addColorStop(0.56, '#efd8ae'); gr.addColorStop(1, '#e3c08e');
+    g.fillStyle = gr; g.fillRect(0, 0, 4, 512);
+    const tex = new THREE.CanvasTexture(c); tex.encoding = THREE.sRGBEncoding;
+    scene.background = tex;
+  }
+  scene.fog = new THREE.Fog(lin(0xe6cfa2), 35, 150);
+  const camera = new THREE.PerspectiveCamera(30, innerWidth / innerHeight, 0.05, 500);
+  scene.add(new THREE.HemisphereLight(0xdfe9ff, 0xc9b07a, 0.66));
+  const sun = new THREE.DirectionalLight(0xffdfb4, 1.5);
+  sun.castShadow = true;
+  sun.shadow.mapSize.set(4096, 4096);
+  sun.shadow.bias = -0.0003; sun.shadow.normalBias = 0.015;
+  scene.add(sun, sun.target);
+  function aimSun(x, z, r) { sun.target.position.set(x, 0, z); sun.position.set(x - 9, 8, z + 10); Object.assign(sun.shadow.camera, { left: -r, right: r, top: r, bottom: -r, near: 1, far: 60 }); sun.shadow.camera.updateProjectionMatrix(); }
+  const rimL = new THREE.DirectionalLight(0xffd29a, 0.55); rimL.position.set(7, 5, -9); scene.add(rimL);
+  const fill = new THREE.DirectionalLight(0xfff4e6, 0.22); fill.position.set(4, 4, 30); scene.add(fill);
+
+  // where the grass is trodden flat (1) and where nothing grows: a trodden band along the trail (z near 0) where the men
+  // stand and walk, flattened on the camera's side so they read, the beaten path itself bare
+  const trailZ = (x) => 0.25 * Math.sin(x * 0.2);
+  const GRASS_OPTS = {
+    trample: (x, z) => { const d = z - trailZ(x); return d > -2.4 && d < 8.5 ? 1 : 1 - Math.min(1, (-2.4 - d) / 1.5); },
+    clear: (x, z) => Math.abs(z - trailZ(x)) < 0.45 + 0.2 * FK.noise(x * 0.7, 0, z * 0.7),
+  };
+  // ---------- the ground: gentle folds, a worn trail along z = 0, short grass and tufts, elephant grass set back ----------
+  const ground = (x, z) => 0.18 * Math.sin(x * 0.11 + 0.6) * Math.cos(z * 0.09) + 0.1 * Math.sin(x * 0.27 - z * 0.13) + 0.025 * Math.sin(x * 1.3 + z * 0.9) * Math.min(1, Math.abs(z) / 2);
+  {
+    const geo = new THREE.PlaneGeometry(220, 160, 220, 160); geo.rotateX(-Math.PI / 2);
+    const p = geo.attributes.position;
+    for (let i = 0; i < p.count; i++) p.setY(i, ground(p.getX(i), p.getZ(i)));
+    geo.computeVertexNormals();
+    FK.paint(geo, (x, y, z) => {
+      // leaf litter and dry earth under the elephant grass (grass-study treatment C), lighter where it is trodden
+      const nn = FK.noise(x * 0.9 + 4, 0, z * 0.9), tr = GRASS_OPTS.trample(x, z);
+      if (GRASS_OPTS.clear(x, z) || tr > 0.95) return nn > 0.55 ? 0x66553a : 0x5c4c35;
+      return nn < 0.4 ? 0x3b3326 : nn < 0.7 ? 0x463d2b : 0x4d442f;
+    });
+    const m = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1 }));
+    m.receiveShadow = true; scene.add(m);
+  }
+  // ---------- the elephant grass: grass-study treatment C (grass.js), 60 x 60 m, trodden flat where the men stand and walk ----------
+  const wind = { value: 0 };
+  const sunDir = new THREE.Vector3(-9, 8, 10).normalize();
+  const tallGrass = TallGrass.create({ scene, ground, half: 30, skirt: 20, spacing: 0.72, trample: GRASS_OPTS.trample, clear: GRASS_OPTS.clear, sunDir, sunCol: new THREE.Color(0xffdfb4).convertSRGBToLinear().multiplyScalar(1.5) });
+
+  // ---------- the three figures ----------
+  const MAT = V3.material(), MAT2 = V2.material();
+  const SPEC = { kind: 'rifleman', face: 0, rolled: true, stubble: 0.25, band: [['bottle', -0.42]], build: 1 };
+  let A = null, B = null, C = null, viewT = 0, plan = null;
+  const NEED = ['Walk With Rifle', 'Rifle Idle', 'Kneeling Down', 'Rifle Kneel Idle', 'Dying (1)'];
+  // A: the clay v2 figure, posed by clay-v2.js (V2.animate: idle with breathing, glances and blinks; the loose walk; kneel;
+  // the slump). V2's walk is made in place, so the root moves with its planted foot, measured as for B.
+  function makeA() {
+    const F = V2.build('rifleman', { face: 0, mat: MAT2 });
+    F.seed = 1; F.A = { mode: 'idle', prev: 'idle', tMode: 0, expr: V2.EXPR.steady, exprPrev: V2.EXPR.steady, tExpr: 0 };
+    F.x = -4; F.z = 0; F.yaw = Math.PI / 2; F.feet = null;
+    scene.add(F.root);
+    return F;
+  }
+  function animA(F, t, dt) {
+    V2.animate(F, t, F.A);
+    const root = F.root; root.position.set(F.x, ground(F.x, F.z), F.z); root.rotation.y = F.yaw; root.updateMatrixWorld(true);
+    const feet = [F.j.ftL, F.j.ftR].map((b) => root.worldToLocal(b.getWorldPosition(V(0, 0, 0))));
+    let speed = 0;
+    if (F.feet && (F.A.mode === 'walk' || F.A.prev === 'walk')) {
+      const ymin = Math.min(feet[0].y, feet[1].y); let sw = 0, sz = 0;
+      for (let i = 0; i < 2; i++) { const w = 1 - FK.smooth((feet[i].y - ymin - 0.006) / 0.024); sw += w; sz += w * (feet[i].z - F.feet[i].z); }
+      speed = Math.max(0, -sz / Math.max(1e-4, sw) / dt);
+    }
+    F.feet = feet;
+    F.x += speed * dt;
+    const ymin = Math.min(feet[0].y, feet[1].y);
+    root.position.set(F.x, ground(F.x, F.z) - Math.min(0, ymin - 0.085) * (F.A.mode === 'walk' ? 1 : 0), F.z);
+    root.updateMatrixWorld(true);
+  }
+  function setModeA(F, m, t) { const a = F.A; a.prev = a.mode; a.mode = m; a.tMode = t; }
+  function mk(raw) {
+    const F = V3.build(Object.assign({ mat: MAT }, SPEC));
+    const f = CM.figure(F, { seed: 1, ground, x: -4, z: 0, yaw: Math.PI / 2, raw, rawRoot: raw, mood: 'calm' });
+    scene.add(F.root);
+    return f;
+  }
+  function setBeh(b) {
+    BEH = b; viewT = 0;
+    for (const o of [A && A.root, B && B.F.root, C && C.F.root]) if (o) scene.remove(o);
+    A = makeA(); B = mk(false); C = mk(true);
+    const pinned = b !== 'walk';
+    for (const f of [B, C]) f.o.pinned = pinned;
+    const both = (fn) => { fn(B); fn(C); };
+    if (b === 'walk') { setModeA(A, 'walk', 0); A.A.prev = 'walk'; both((f) => CM.play(f, 'Walk With Rifle', { fade: 0, time: 0 })); plan = null; }
+    else {
+      both((f) => CM.play(f, 'Rifle Idle', { fade: 0, time: 0.5 }));
+      if (b === 'idle') plan = null;
+      if (b === 'kneel') {
+        const kd = CM.clips['Kneeling Down'].duration;
+        plan = (t) => {
+          if (t >= 1 && !plan.k1) { plan.k1 = 1; setModeA(A, 'kneel', t); both((f) => CM.play(f, 'Kneeling Down', { fade: 0.4 })); }
+          if (t >= 1 + kd - 0.45 && !plan.k2) { plan.k2 = 1; both((f) => CM.play(f, 'Rifle Kneel Idle', { fade: 0.45 })); }
+          if (t >= 6 && !plan.k3) { plan.k3 = 1; setModeA(A, 'idle', t); both((f) => CM.play(f, 'Kneeling Down', { fade: 0.4, reverse: true })); }
+          if (t >= 6 + kd - 0.3 && !plan.k4) { plan.k4 = 1; both((f) => CM.play(f, 'Rifle Idle', { fade: 0.4 })); }
+        };
+      }
+      if (b === 'fall') plan = (t) => { if (t >= 1.2 && !plan.k1) { plan.k1 = 1; setModeA(A, 'fall', t); both((f) => { CM.play(f, 'Dying (1)', { fade: 0.5 }); CM.setMood(f, 'strained'); }); } if (t > 5 && !plan.k2) { plan.k2 = 1; CM.setMood(B, 'calm'); } };
+    }
+    document.getElementById('beh').textContent = { walk: '1 Walk, 10 s in a straight line', idle: '2 Standing idle with the rifle', kneel: '3 Kneel and rise', fall: '4 The gentle fall' }[b] + '  ·  keys 1-4';
+  }
+  addEventListener('keydown', (e) => { const i = '1234'.indexOf(e.key); if (i >= 0) setBeh(['walk', 'idle', 'kneel', 'fall'][i]); });
+
+  // ---------- frame loop: three viewports, one figure in each, the same camera offset from each ----------
+  const cams = [0, 1, 2].map(() => new THREE.PerspectiveCamera(30, 1, 0.05, 500));
+  const hp = V(0, 0, 0), camX = [null, null, null];
+  renderer.autoClear = false;
+  let last = null, fr = 0, ft = 0, fps = 0;
+  function frame(now) {
+    requestAnimationFrame(frame);
+    if (!window.__ready) return;
+    if (last === null) last = now;
+    const dt = Math.min(0.1, Math.max(0.001, (now - last) / 1000)); last = now;
+    viewT += dt; wind.value = viewT; FK.time.value = viewT;
+    if (plan) plan(viewT);
+    animA(A, viewT, dt); CM.update(B, dt, viewT); CM.update(C, dt, viewT);
+    const W = innerWidth, H = innerHeight;
+    renderer.setScissorTest(false); renderer.setViewport(0, 0, W, H); renderer.clear();
+    renderer.setScissorTest(true);
+    const roots = [A.root, B.F.root, C.F.root], hips = [A.j.pelvis, B.b.mixamorigHips, C.b.mixamorigHips];
+    for (let i = 0; i < 3; i++) {
+      roots.forEach((r, k) => { r.visible = k === i; });
+      hips[i].getWorldPosition(hp);
+      const fx = hp.x;
+      camX[i] = camX[i] === null ? fx : camX[i] + (fx - camX[i]) * Math.min(1, dt * 3);
+      const gy = ground(camX[i], 0), c = cams[i], low = BEH === 'fall' || BEH === 'kneel';
+      c.aspect = (W / 3) / H; c.fov = 30;
+      c.position.set(camX[i] + 2.2, gy + 1.5, 4.6); c.lookAt(camX[i] + 0.15, gy + (low ? 0.6 : 0.82), 0); c.updateProjectionMatrix();
+      aimSun(camX[i], 0, 5); tallGrass.update(c, viewT);
+      const x0 = Math.round(W * i / 3), w = Math.round(W * (i + 1) / 3) - x0;
+      renderer.setViewport(x0, 0, w, H); renderer.setScissor(x0, 0, w, H); renderer.render(scene, c);
+    }
+    roots.forEach((r) => { r.visible = true; });
+    fr++; ft += dt; if (ft >= 0.5) { fps = Math.round(fr / ft); fr = 0; ft = 0; }
+    const ri = renderer.info.render;
+    document.getElementById('fps').textContent = fps + ' fps · ' + (A.tris + B.F.tris + C.F.tris).toLocaleString('en-US') + ' figure tris';
+  }
+  addEventListener('resize', () => renderer.setSize(innerWidth, innerHeight));
+
+  // ---------- bench: animation cost of 30 figures, A and B (real clock; run without the stepped tools) ----------
+  async function bench() {
+    const out = {};
+    const As = [], Bs = [];
+    for (let i = 0; i < 30; i++) { const F = makeA(); F.seed = i; setModeA(F, 'walk', 0); F.A.prev = 'walk'; F.z = i; As.push(F); }
+    for (let i = 0; i < 30; i++) { const F = V3.make(100 + i, 'rifleman', 0, MAT); const f = CM.figure(F, { seed: i, ground, x: 0, z: i, vary: true, mood: 'calm' }); scene.add(F.root); CM.play(f, 'Walk With Rifle', { fade: 0 }); Bs.push(f); }
+    const run = (fn, n) => { const t0 = performance.now(); for (let k = 0; k < n; k++) fn(k); return performance.now() - t0; };
+    run((k) => { for (const F of As) animA(F, k / 30, 1 / 30); }, 30); run((k) => { for (const f of Bs) CM.update(f, 1 / 30, k / 30); }, 30);
+    const N = 150;
+    out.A_ms_per_frame_30 = run((k) => { for (const F of As) animA(F, 1 + k / 30, 1 / 30); }, N) / N;
+    out.B_ms_per_frame_30 = run((k) => { for (const f of Bs) CM.update(f, 1 / 30, 1 + k / 30); }, N) / N;
+    // render time for the 30 skinned meshes is the same skinning cost either way; this is CPU animation only
+    out.A_ms_per_fig = out.A_ms_per_frame_30 / 30; out.B_ms_per_fig = out.B_ms_per_frame_30 / 30;
+    out.A_150_est = out.A_ms_per_fig * 150; out.B_150_est = out.B_ms_per_fig * 150;
+    window.__out = out; window.__ready = true;
+  }
+
+  (async () => {
+    try {
+      const T = V3.build(Object.assign({ mat: MAT }, SPEC));
+      await CM.init(T);
+      await CM.load(NEED);
+      if (params.get('bench') === '1') return bench();
+      setBeh(BEH);
+      window.__ready = true;
+    } catch (e) { console.error(e); document.getElementById('beh').textContent = 'failed: ' + e.message; window.__ready = true; }
+  })();
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

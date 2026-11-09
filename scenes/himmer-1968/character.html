@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Character sheet</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #e9e4d6; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; color: #2b2a26; }
+  canvas { display: block; }
+  h1 { position: fixed; left: 28px; top: 18px; margin: 0; font-size: 28px; }
+  h1 small { display: block; font-size: 15px; font-weight: 500; color: #6a6458; margin-top: 4px; }
+  .lab { position: fixed; transform: translate(-50%, 0); text-align: center; font-size: 15px; color: #6a6458; }
+</style>
+</head>
+<body>
+<h1 id="title">Character sheet<small></small></h1>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="kit/motion.js"></script>
+<script src="kit/figures.js"></script>
+<script src="kit/blocky.js"></script>
+<script>
+// The character review sheet: every character is shown to the family here before it goes into the scene.
+//   character.html?char=shepherd&view=turn   front, three-quarter, side and back, with its triangle count
+//   &view=face                                head and shoulders, front and three-quarter
+//   &view=walk                                walking a loop with the loose walk, idling at the corners
+//   &view=pose&pose=kneel                     a named pose from the character's own poses
+// The character lives in characters/<name>.js:
+//   window.CHARACTERS = window.CHARACTERS || {};
+//   CHARACTERS.shepherd = { name: 'The Good Shepherd', note: 'one line for the family',
+//     build(ctx, B, kit, rig) { return B.make(kit, rig, { preset: 'savior' }); },     // or a figure of your own
+//     poses: { kneel: { k0: 1.4, ... } } };
+// Same light as the scenes: ACES, sRGB, a warm key from the front left, warm bounce, soft shadows.
+(function () {
+  'use strict';
+  const params = new URLSearchParams(location.search), view = params.get('view') || 'turn', key = params.get('char');
+  const s = document.createElement('script');
+  s.src = 'characters/' + key + '.js';
+  s.onload = start;
+  s.onerror = () => { document.getElementById('title').firstChild.textContent = 'No characters/' + key + '.js'; };
+  window.__ready = false;
+  document.body.appendChild(s);
+
+  function start() {
+    const C = window.CHARACTERS[key];
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setPixelRatio(Math.min(2, devicePixelRatio)); renderer.setSize(innerWidth, innerHeight);
+    renderer.outputEncoding = THREE.sRGBEncoding; renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.12;
+    document.body.appendChild(renderer.domElement);
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0xe9e4d6).convertSRGBToLinear();
+    scene.add(new THREE.HemisphereLight(0xdfe9ff, 0xc9b07a, 0.7));
+    const key2 = new THREE.DirectionalLight(0xfff1d6, 1.35); key2.position.set(-3, 5, 4); scene.add(key2);
+    const fill = new THREE.DirectionalLight(0xfff6ea, 0.28); fill.position.set(1, 1.5, 5); scene.add(fill);
+    const ground = new THREE.Mesh(new THREE.CircleGeometry(30, 48), new THREE.MeshStandardMaterial({ color: new THREE.Color(0xd8cfb4).convertSRGBToLinear(), roughness: 1 }));
+    ground.rotation.x = -Math.PI / 2; scene.add(ground);
+    const shadowTex = (() => {
+      const c = document.createElement('canvas'); c.width = c.height = 128;
+      const g = c.getContext('2d'), gr = g.createRadialGradient(64, 64, 4, 64, 64, 62);
+      gr.addColorStop(0, 'rgba(60,45,25,0.5)'); gr.addColorStop(1, 'rgba(60,45,25,0)');
+      g.fillStyle = gr; g.fillRect(0, 0, 128, 128);
+      return new THREE.CanvasTexture(c);
+    })();
+    const blob = (r) => { const m = new THREE.Mesh(new THREE.PlaneGeometry(r * 2, r * 1.7), new THREE.MeshBasicMaterial({ map: shadowTex, transparent: true, depthWrite: false })); m.rotation.x = -Math.PI / 2; m.position.y = 0.005; scene.add(m); return m; };
+
+    const ctx = { THREE, root: scene, surfaceY: () => 0 };
+    const kit = window.FigureKit.makeKit(ctx, { outward: true }), B = window.Blocky, P = window.FigureKit.P;
+    // one figure per view on one rig, so the sheet shows exactly what the scene will
+    const yaws = view === 'turn' ? [0, 0.75, Math.PI / 2, Math.PI] : view === 'face' ? [0, 0.75] : [0];
+    const rig = kit.makeRig(), figs = yaws.map(() => C.build(ctx, B, kit, rig));
+    B.finish(rig, scene);
+    const tris = Math.round(rig.tris / figs.length);
+    const H = figs[0].H || 1.8, gap = Math.max(1.0, H * 0.62), x0 = -(figs.length - 1) * gap / 2;
+    const shadows = figs.map((f, i) => { f.floor = () => 0; const sh = blob(f.shadowR || 0.35); sh.position.x = x0 + i * gap; return sh; });
+    const base = (f) => P(Object.assign({}, f.base, view === 'pose' && C.poses ? C.poses[params.get('pose')] || {} : {}));
+    figs.forEach((f, i) => { f.root.position.set(x0 + i * gap, 0, 0); f.root.rotation.y = yaws[i]; f.pose(base(f)); });
+    const fov = view === 'face' ? 16 : 24, camera = new THREE.PerspectiveCamera(fov, innerWidth / innerHeight, 0.1, 100);
+    const look = view === 'face' ? H * 0.82 : H * 0.5, span = figs.length * gap + 0.4;
+    const dist = view === 'walk' ? 9 : Math.max(view === 'face' ? 3.2 : H * 3.6, span / (2 * Math.tan(fov * Math.PI / 360) * camera.aspect));
+    camera.position.set(0, look + (view === 'face' ? 0.1 : view === 'walk' ? 3 : 0.4), dist);
+    camera.lookAt(0, view === 'walk' ? 0.6 : look, 0);
+    const T = document.getElementById('title');
+    T.firstChild.textContent = C.name;
+    T.lastChild.textContent = (C.note ? C.note + ' · ' : '') + tris.toLocaleString('en-US') + ' triangles';
+    if (view === 'turn') ['Front', 'Three-quarter', 'Side', 'Back'].forEach((n, i) => {
+      const p = new THREE.Vector3(x0 + i * gap, -0.06, 0.3).project(camera), d = document.createElement('div');
+      d.className = 'lab'; d.textContent = n; d.style.left = ((p.x + 1) / 2 * innerWidth) + 'px'; d.style.top = ((1 - p.y) / 2 * innerHeight) + 'px';
+      document.body.appendChild(d);
+    });
+
+    // the walk: a loop with eased starts and stops, the loose walk, idling at each corner
+    const M = window.Motion, f = figs[0], pts = [[-2.4, 1.2], [2.4, 1.2], [2.4, -1.4], [-2.4, -1.4]];
+    const S = new window.FigureKit.Script(pts[3][0], pts[3][1], 0, 'sheet');
+    if (view === 'walk') { for (const p of pts) { S.walk([p], 0.8, f); S.hold(1.6, (s) => ({ pose: window.FigureKit.idle(s, 2, f.base) })); } }
+    function frame() {
+      const t = performance.now() / 1000;
+      if (view === 'walk') {
+        const st = S.sample(t % S.T, { t, ct: t % S.T, n: 0 });
+        f.set(st);
+        shadows[0].position.set(f.root.position.x, 0.005, f.root.position.z);
+      } else figs.forEach((g, i) => { g.pose(g.follow ? g.follow(M.life(t, i + 1, base(g), true)) : base(g)); });
+      for (const g of figs) if (g.eyes) g.eyes.scale.y = M.blink(t, 1.3);
+      renderer.render(scene, camera);
+      requestAnimationFrame(frame);
+    }
+    window.__ready = true;
+    frame();
+  }
+})();
+</script>
+</body>
+</html>

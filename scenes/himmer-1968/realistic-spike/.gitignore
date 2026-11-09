@@ -1,0 +1,4 @@
+# build scratch (asset pack zip, bakes, .blend, frames): large and reproducible
+.scratch/
+# Mixamo clips: Adobe terms forbid redistributing the raw files, and the repo is public
+anim/*.fbx

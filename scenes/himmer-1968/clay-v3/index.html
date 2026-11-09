@@ -1,0 +1,310 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Clay v3 Marine</title>
+<link rel="icon" href="data:,">
+<style>
+  html, body { margin: 0; height: 100%; background: #2a2620; overflow: hidden; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
+  canvas { display: block; }
+  .hud { position: absolute; font: 500 13px/1.3 system-ui, -apple-system, "Segoe UI", sans-serif; color: rgba(250, 240, 214, 0.82); pointer-events: none; text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6); }
+  #fps { right: 16px; top: 14px; text-align: right; font-variant-numeric: tabular-nums; }
+  #title { left: 24px; top: 18px; color: #fdf6e2; }
+  #title b { display: block; font: 600 22px/1.15 Georgia, 'Palatino Linotype', serif; letter-spacing: 0.02em; }
+  #title span { display: block; margin-top: 5px; font: italic 14px/1.3 Georgia, serif; color: #f0e2bc; max-width: 560px; }
+  #info { left: 50%; bottom: 46px; transform: translateX(-50%); text-align: center; }
+  #info .n { display: inline-block; font: 600 19px/1.15 Georgia, 'Palatino Linotype', serif; color: #fdf6e2; padding: 6px 15px 5px; border-radius: 999px; background: rgba(40, 34, 30, 0.74); border: 1px solid rgba(240, 212, 138, 0.7); }
+  #info .t { margin-top: 7px; font-variant-numeric: tabular-nums; color: #f6ecd2; text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9); }
+  #keys { left: 24px; bottom: 14px; }
+  #layers { right: 16px; top: 34px; text-align: right; font-variant-numeric: tabular-nums; }
+</style>
+</head>
+<body>
+<div id="title" class="hud"><b>Clay v3</b><span>The clay v2 Marine on a Mixamo skeleton: Mixamo clips with the natural-motion layer, and a face that is never still.</span></div>
+<div id="fps" class="hud"></div>
+<div id="layers" class="hud"></div>
+<div id="info" class="hud"></div>
+<div id="keys" class="hud">H hero · F face at 6 m (again: zoom) · W walk · C next clip · P platoon · D fall · K kneel · M mood · 1–8 layers · 0 raw · A all</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<!-- cdnjs's r128 has no examples/ folder; these are the same r128 files from jsdelivr -->
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/libs/fflate.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/FBXLoader.js"></script>
+<script src="figkit.js"></script>
+<script src="clay-v3.js"></script>
+<script src="motion.js"></script>
+<script src="grass.js"></script>
+<script>
+// ?view=hero|face|walk|clip|platoon|fall|kneel  ?t0=seconds  ?layers=12345678 (which are on; ?layers= is the raw clip)
+// ?mood=calm|alert|strained  ?clip=<name> (clip view)  ?auto=1 (clip view steps through every clip)  ?seed=<n>  ?zoom=1
+// ?cam=x,y,z,tx,ty,tz (pins the camera, relative to the focus figure)  ?fov=<deg>
+(function () {
+  'use strict';
+  window.__ready = false;
+  const params = new URLSearchParams(location.search);
+  const FK = window.FK, V3 = window.V3, CM = window.CM, V = FK.V, lin = FK.lin, TAU = Math.PI * 2;
+  const T0 = Number(params.get('t0') || 0);
+  let VIEW = params.get('view') || 'hero';
+  let MOOD = params.get('mood') || null;
+  let zoom = params.get('zoom') === '1';
+  const SEED = Number(params.get('seed') || 3);
+  if (params.has('layers')) CM.KEYS.forEach((k, i) => { CM.L[k] = params.get('layers').includes(String(i + 1)); });
+
+  // ---------- renderer: ACES, sRGB, a warm key low in the south-west, warm ground bounce, a warm rim from behind ----------
+  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setPixelRatio(Math.min(2, devicePixelRatio));
+  renderer.setSize(innerWidth, innerHeight);
+  renderer.outputEncoding = THREE.sRGBEncoding;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.1;
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  document.body.appendChild(renderer.domElement);
+  const scene = new THREE.Scene();
+  {
+    const c = document.createElement('canvas'); c.width = 4; c.height = 512;
+    const g = c.getContext('2d'), gr = g.createLinearGradient(0, 0, 0, 512);
+    gr.addColorStop(0, '#6a98c6'); gr.addColorStop(0.32, '#b2c9da'); gr.addColorStop(0.56, '#efd8ae'); gr.addColorStop(1, '#e3c08e');
+    g.fillStyle = gr; g.fillRect(0, 0, 4, 512);
+    const tex = new THREE.CanvasTexture(c); tex.encoding = THREE.sRGBEncoding;
+    scene.background = tex;
+  }
+  scene.fog = new THREE.Fog(lin(0xe6cfa2), 35, 150);
+  const camera = new THREE.PerspectiveCamera(30, innerWidth / innerHeight, 0.05, 500);
+  scene.add(new THREE.HemisphereLight(0xdfe9ff, 0xc9b07a, 0.66));
+  const sun = new THREE.DirectionalLight(0xffdfb4, 1.5);
+  sun.castShadow = true;
+  sun.shadow.mapSize.set(4096, 4096);
+  sun.shadow.bias = -0.0003; sun.shadow.normalBias = 0.015;
+  scene.add(sun, sun.target);
+  function aimSun(x, z, r) { sun.target.position.set(x, 0, z); sun.position.set(x - 9, 8, z + 10); Object.assign(sun.shadow.camera, { left: -r, right: r, top: r, bottom: -r, near: 1, far: 60 }); sun.shadow.camera.updateProjectionMatrix(); }
+  const rimL = new THREE.DirectionalLight(0xffd29a, 0.55); rimL.position.set(7, 5, -9); scene.add(rimL);
+  const fill = new THREE.DirectionalLight(0xfff4e6, 0.22); fill.position.set(4, 4, 30); scene.add(fill);
+
+  // where the grass is trodden flat (1) and where nothing grows: a trodden band along the trail (z near 0) where the men
+  // stand and walk, flattened on the camera's side so they read, the beaten path itself bare
+  const trailZ = (x) => 0.25 * Math.sin(x * 0.2);
+  const GRASS_OPTS = {
+    trample: (x, z) => { const d = z - trailZ(x); return d > -2.4 && d < 8.5 ? 1 : 1 - Math.min(1, (-2.4 - d) / 1.5); },
+    clear: (x, z) => Math.abs(z - trailZ(x)) < 0.45 + 0.2 * FK.noise(x * 0.7, 0, z * 0.7),
+  };
+  // ---------- the ground: gentle folds, a worn trail along z = 0, short grass and tufts, elephant grass set back ----------
+  const ground = (x, z) => 0.18 * Math.sin(x * 0.11 + 0.6) * Math.cos(z * 0.09) + 0.1 * Math.sin(x * 0.27 - z * 0.13) + 0.025 * Math.sin(x * 1.3 + z * 0.9) * Math.min(1, Math.abs(z) / 2);
+  {
+    const geo = new THREE.PlaneGeometry(220, 160, 220, 160); geo.rotateX(-Math.PI / 2);
+    const p = geo.attributes.position;
+    for (let i = 0; i < p.count; i++) p.setY(i, ground(p.getX(i), p.getZ(i)));
+    geo.computeVertexNormals();
+    FK.paint(geo, (x, y, z) => {
+      // leaf litter and dry earth under the elephant grass (grass-study treatment C), lighter where it is trodden
+      const nn = FK.noise(x * 0.9 + 4, 0, z * 0.9), tr = GRASS_OPTS.trample(x, z);
+      if (GRASS_OPTS.clear(x, z) || tr > 0.95) return nn > 0.55 ? 0x66553a : 0x5c4c35;
+      return nn < 0.4 ? 0x3b3326 : nn < 0.7 ? 0x463d2b : 0x4d442f;
+    });
+    const m = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1 }));
+    m.receiveShadow = true; scene.add(m);
+  }
+  // ---------- the elephant grass: grass-study treatment C (grass.js), 60 x 60 m, trodden flat where the men stand and walk ----------
+  const wind = { value: 0 };
+  const sunDir = new THREE.Vector3(-9, 8, 10).normalize();
+  const tallGrass = TallGrass.create({ scene, ground, half: 30, skirt: 20, spacing: 0.72, trample: GRASS_OPTS.trample, clear: GRASS_OPTS.clear, sunDir, sunCol: new THREE.Color(0xffdfb4).convertSRGBToLinear().multiplyScalar(1.5) });
+
+  // ---------- figures ----------
+  const MAT = V3.material();
+  function blobTex() {
+    const c = document.createElement('canvas'); c.width = c.height = 64;
+    const g = c.getContext('2d'), gr = g.createRadialGradient(32, 32, 2, 32, 32, 31);
+    gr.addColorStop(0, 'rgba(50,38,22,0.42)'); gr.addColorStop(1, 'rgba(50,38,22,0)');
+    g.fillStyle = gr; g.fillRect(0, 0, 64, 64);
+    return new THREE.CanvasTexture(c);
+  }
+  const BLOB = new THREE.MeshBasicMaterial({ map: blobTex(), transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 });
+  const BLOBG = new THREE.PlaneGeometry(0.9, 0.9).rotateX(-Math.PI / 2);
+  let figs = [];
+  function clearFigs() { for (const f of figs) { scene.remove(f.F.root, f.blob); f.F.mesh.geometry.dispose(); f.mixer.stopAllAction(); } figs = []; }
+  function addFig(role, seed, o) {
+    const F = V3.make(seed, role, o.lod === 0 ? 0 : 1, MAT);
+    const f = CM.figure(F, Object.assign({ seed, ground }, o));
+    f.blob = new THREE.Mesh(BLOBG, BLOB); f.blob.renderOrder = 1;
+    scene.add(F.root, f.blob);
+    figs.push(f);
+    return f;
+  }
+
+  // ---------- views ----------
+  const ROLE_IDLE = { rifleman: 'Rifle Idle', nva: 'Rifle Idle', captain: 'Looking Around', radioman: 'Talking On Phone', corpsman: 'Looking Around' };
+  const NEED = {
+    hero: ['Rifle Idle', 'Looking Around', 'Talking On Phone'], face: ['Rifle Idle'], walk: ['Walk With Rifle', 'Rifle Idle'], platoon: ['Walk With Rifle', 'Rifle Idle'],
+    fall: ['Rifle Idle', 'Dying (1)'], kneel: ['Rifle Idle', 'Kneeling Down', 'Rifle Kneel Idle'], clip: CM.ALL,
+  };
+  let script = null, clipIdx = 0, focus = null, viewT = 0, info = '';
+  const camS = { p: V(0, 0, 0), l: V(0, 0, 0), init: false };
+  async function setView(v) {
+    VIEW = v; window.__ready = false;
+    info = 'loading clips…'; drawInfo();
+    await CM.load(NEED[v] || [], (nm) => { info = 'retargeting ' + nm; drawInfo(); });
+    clearFigs(); script = null; viewT = 0; camS.init = false;
+    const mood = (m) => MOOD || m;
+    if (v === 'hero') {
+      const cast = [['rifleman', SEED, 'alert'], ['captain', 8, 'calm'], ['radioman', 5, 'calm'], ['corpsman', 9, 'strained'], ['nva', 4, 'alert']];
+      cast.forEach(([role, seed, md], i) => {
+        const f = addFig(role, seed, { x: (i - 2) * 1.25, z: -Math.abs(i - 2) * 0.35, yaw: -(i - 2) * 0.12, pinned: true, mood: mood(md), vary: true });
+        CM.play(f, ROLE_IDLE[role], { fade: 0, time: (i * 1.7) % 4 });
+      });
+      focus = figs[0];
+    } else if (v === 'face') {
+      const f = addFig('rifleman', SEED, { x: 0, z: 0, yaw: 0.35, pinned: true, mood: mood('alert') });
+      CM.play(f, 'Rifle Idle', { fade: 0, time: 0.5 });
+      focus = f;
+    } else if (v === 'walk') {
+      const f = addFig('rifleman', SEED, { x: -5, z: 0, yaw: Math.PI / 2, mood: mood('calm') });
+      CM.play(f, 'Walk With Rifle', { fade: 0, time: 0 });
+      focus = f;
+    } else if (v === 'platoon') {
+      const r = CM.rand(31), roles = { 3: 'captain', 4: 'radioman', 9: 'corpsman', 18: 'radioman', 22: 'corpsman' };
+      for (let i = 0; i < 30; i++) {
+        const file = i % 2, x = 6 - i * 1.55 + (r() - 0.5) * 0.9, z = (file ? 1.15 : -1.15) + (r() - 0.5) * 0.5;
+        const mr = r(), md = mr < 0.55 ? 'calm' : mr < 0.82 ? 'alert' : 'strained';
+        const f = addFig(roles[i] || 'rifleman', 200 + i * 17, { x, z, yaw: Math.PI / 2 + (r() - 0.5) * 0.06, mood: mood(md), vary: true, lod: i < 4 ? 1 : 0 });
+        CM.play(f, 'Walk With Rifle', { fade: 0 });
+      }
+      focus = figs[6];
+    } else if (v === 'fall') {
+      const f = addFig('rifleman', SEED, { x: 0, z: 0, yaw: 0.6, pinned: true, mood: mood('alert') });
+      CM.play(f, 'Rifle Idle', { fade: 0, time: 0.5 });
+      script = (t) => { if (t >= 1.2 && f.cur !== 'Dying (1)') { CM.play(f, 'Dying (1)', { fade: 0.5 }); CM.setMood(f, 'strained'); } if (t > 5 && f.mood !== 'calm') CM.setMood(f, 'calm'); };
+      focus = f;
+    } else if (v === 'kneel') {
+      const f = addFig('rifleman', SEED, { x: 0, z: 0, yaw: 0.6, pinned: true, mood: mood('alert') });
+      CM.play(f, 'Rifle Idle', { fade: 0, time: 0.5 });
+      const kd = CM.clips['Kneeling Down'].duration;
+      script = (t) => { if (t >= 1.0 && !f.k1) { f.k1 = true; CM.play(f, 'Kneeling Down', { fade: 0.4 }); } if (t >= 1.0 + kd - 0.45 && !f.k2) { f.k2 = true; CM.play(f, 'Rifle Kneel Idle', { fade: 0.45 }); }
+        if (t >= 6 && !f.k3) { f.k3 = true; CM.play(f, 'Kneeling Down', { fade: 0.4, reverse: true }); } if (t >= 6 + kd - 0.3 && !f.k4) { f.k4 = true; CM.play(f, 'Rifle Idle', { fade: 0.4 }); } };
+      focus = f;
+    } else if (v === 'clip') {
+      const f = addFig('rifleman', SEED, { x: 0, z: 0, yaw: Math.PI / 2, mood: mood('alert') });
+      if (params.has('clip')) clipIdx = Math.max(0, CM.ALL.indexOf(params.get('clip')));
+      CM.play(f, CM.ALL[clipIdx], { fade: 0 });
+      f.clipStart = 0;
+      if (params.get('auto') === '1') script = (t) => { const c = CM.clips[CM.ALL[clipIdx]]; if (t - f.clipStart > Math.max(4, Math.min(8, c.duration * (c.userData.cfg.mode === 'once' ? 1.15 : 2)))) nextClip(t); };
+      focus = f;
+    }
+    info = ''; window.__ready = true;
+  }
+  function nextClip(t) {
+    const f = figs[0]; clipIdx = (clipIdx + 1) % CM.ALL.length; f.clipStart = t;
+    f.x = 0; f.z = 0; f.drop = null; CM.play(f, CM.ALL[clipIdx], { fade: 0.45 });
+  }
+
+  // ---------- keys ----------
+  addEventListener('keydown', (e) => {
+    const k = e.key.toLowerCase();
+    const i = '12345678'.indexOf(k);
+    if (i >= 0) CM.L[CM.KEYS[i]] = !CM.L[CM.KEYS[i]];
+    else if (k === '0') CM.KEYS.forEach((kk) => { CM.L[kk] = false; });
+    else if (k === 'a') CM.KEYS.forEach((kk) => { CM.L[kk] = true; });
+    else if (k === 'h') setView('hero');
+    else if (k === 'f') { if (VIEW === 'face') zoom = !zoom; else setView('face'); }
+    else if (k === 'w') setView('walk');
+    else if (k === 'p') setView('platoon');
+    else if (k === 'd') setView('fall');
+    else if (k === 'k') setView('kneel');
+    else if (k === 'c') { if (VIEW === 'clip') nextClip(viewT); else setView('clip'); }
+    else if (k === 'm') { const names = Object.keys(CM.MOODS); MOOD = names[(names.indexOf(MOOD || (focus && focus.mood) || 'calm') + 1) % names.length]; for (const f of figs) CM.setMood(f, MOOD); }
+  });
+
+  // ---------- camera ----------
+  const want = { p: V(0, 0, 0), l: V(0, 0, 0) }, hp = V(0, 0, 0), cen = V(0, 0, 0);
+  function cameraWant(t) {
+    const f = focus; if (!f) return;
+    const H = f.b.mixamorigHips; H.getWorldPosition(hp);
+    const gy = ground(hp.x, hp.z);
+    camera.fov = 30;
+    if (VIEW === 'hero') {
+      const a = 0.25 * Math.sin(t * 0.07);
+      want.l.set(0, gy + 0.9, -0.2); want.p.set(Math.sin(a) * 7.5, gy + 1.7, Math.cos(a) * 7.5 - 0.2);
+    } else if (VIEW === 'face') {
+      f.b.mixamorigHead.getWorldPosition(cen); cen.y += 0.05;
+      const a = 0.35 + 0.15 * Math.sin(t * 0.05);
+      want.l.copy(cen); want.p.set(cen.x + Math.sin(a) * 6, cen.y + 0.05, cen.z + Math.cos(a) * 6);
+      if (zoom) camera.fov = 7;
+    } else if (VIEW === 'walk') {
+      // side three-quarter at eye height, ahead of him, following
+      want.l.set(hp.x + 0.25, gy + 0.85, hp.z); want.p.set(hp.x + 2.6, gy + 1.6, hp.z + 4.9);
+    } else if (VIEW === 'platoon') {
+      let mx = 0; for (const g of figs) mx += g.F.root.position.x; mx /= figs.length;
+      want.l.set(mx + 3, 0.6, 0); want.p.set(mx + 13, 5.6, 15.5); camera.fov = 34;
+    } else {
+      want.l.set(hp.x, gy + (VIEW === 'fall' || VIEW === 'kneel' ? 0.55 : 0.8), hp.z);
+      want.p.set(hp.x + 3.6, gy + 1.45, hp.z + 4.2);
+    }
+    if (params.has('cam')) { const c = params.get('cam').split(',').map(Number); want.p.set(hp.x + c[0], gy + c[1], hp.z + c[2]); want.l.set(hp.x + c[3], gy + c[4], hp.z + c[5]); }
+    if (params.has('fov')) camera.fov = Number(params.get('fov'));
+  }
+
+  // ---------- frame loop ----------
+  const fpsEl = document.getElementById('fps'), infoEl = document.getElementById('info'), layEl = document.getElementById('layers');
+  const fmt = (x) => x.toLocaleString('en-US');
+  function drawInfo() {
+    const f = focus;
+    const clip = f && f.cur ? f.cur : '';
+    const names = { hero: 'Hero: rifleman, captain, radioman, corpsman, NVA', face: 'Face at 6 m' + (zoom ? ' (zoomed to check)' : ''), walk: 'Walk With Rifle', clip: (clipIdx + 1) + ' of ' + CM.ALL.length + ': ' + clip, platoon: 'Platoon of 30', fall: 'The gentle fall: Dying (1)', kneel: 'Kneel' };
+    infoEl.innerHTML = info ? '<div class="n">' + info + '</div>' : '<div class="n">' + (names[VIEW] || VIEW) + '</div><div class="t">' + (f ? f.F.kind + ' · face ' + (f.F.spec.face + 1) + ' · ' + f.mood + ' · ' + clip + ' · ' + fmt(f.F.tris) + ' triangles' : '') + '</div>';
+  }
+  let last = null, fpsFrames = 0, fpsTime = 0, fps = 0, simT = 0;
+  const cost = { ms: 0, n: 0, avg: 0 };
+  function step(dt) {
+    simT += dt; viewT += dt; wind.value = simT; FK.time.value = simT;
+    if (script) script(viewT);
+    const t0 = performance.now();
+    for (const f of figs) {
+      CM.update(f, dt, viewT);
+      const H = f.b.mixamorigHips; H.getWorldPosition(hp);
+      f.blob.position.set(hp.x, ground(hp.x, hp.z) + 0.012, hp.z); f.blob.scale.setScalar(f.scale * (VIEW === 'fall' && viewT > 2.5 ? 1.6 : 1));
+    }
+    cost.ms += performance.now() - t0; cost.n++;
+  }
+  function frame(now) {
+    requestAnimationFrame(frame);
+    if (!window.__ready) return;
+    if (last === null) last = now;
+    const dt = Math.min(0.1, Math.max(0.001, (now - last) / 1000)); last = now;
+    step(dt);
+    cameraWant(viewT);
+    if (!camS.init) { camS.p.copy(want.p); camS.l.copy(want.l); camS.init = true; }
+    else { const k = 1 - Math.exp(-dt * 3); camS.p.lerp(want.p, k); camS.l.lerp(want.l, k); }
+    camera.position.copy(camS.p); camera.lookAt(camS.l);
+    camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();
+    tallGrass.update(camera, simT);
+    aimSun(camS.l.x, camS.l.z, VIEW === 'platoon' ? 22 : 5);
+    renderer.render(scene, camera);
+    fpsFrames++; fpsTime += dt;
+    if (fpsTime >= 0.5 || !window.__statsOnce) {
+      window.__statsOnce = true;
+      fps = Math.round(fpsFrames / Math.max(fpsTime, 0.001)); fpsFrames = 0; fpsTime = 0; cost.avg = cost.ms / Math.max(1, cost.n); cost.ms = 0; cost.n = 0;
+    }
+    const r = renderer.info.render;
+    const hero = figs.find((g) => g.F.lod === 1), lo = figs.find((g) => g.F.lod === 0);
+    fpsEl.textContent = fps + ' fps · ' + r.calls + ' draws · ' + (r.triangles / 1000).toFixed(1) + 'k tris · ' + figs.length + ' figures' + (hero ? ' · hero ' + fmt(hero.F.tris) : '') + (lo ? ' · LOD ' + fmt(lo.F.tris) : '') + ' · motion ' + cost.avg.toFixed(2) + ' ms';
+    layEl.textContent = CM.KEYS.map((k, i) => (i + 1) + ' ' + k + (CM.L[k] ? '' : ' off')).join(' · ');
+    drawInfo();
+  }
+  addEventListener('resize', () => renderer.setSize(innerWidth, innerHeight));
+
+  // ---------- start ----------
+  (async () => {
+    try {
+      const T = V3.build({ kind: 'rifleman', mat: MAT });
+      await CM.init(T);
+      await setView(VIEW);
+      window.__ready = false;
+      if (T0 > 0) { const n = Math.round(T0 * 30); for (let i = 0; i < n; i++) step(1 / 30); }
+      window.__ready = true;
+    } catch (e) { console.error(e); info = 'failed: ' + e.message; drawInfo(); window.__ready = true; }
+  })();
+  window.__cm = CM; window.__figs = () => figs;
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

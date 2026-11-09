@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Clay v3 Sheet</title>
+<link rel="icon" href="data:,">
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #2a2620; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
+  canvas { display: block; }
+  .hud { position: absolute; color: #fdf6e2; pointer-events: none; text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8); }
+  #name { left: 24px; top: 16px; font: 600 24px/1.2 Georgia, serif; }
+  #name span { display: block; font: italic 15px/1.3 Georgia, serif; color: #f0e2bc; }
+  .vl { bottom: 18px; font: 600 15px/1 system-ui, sans-serif; color: #f6ecd2; text-align: center; }
+</style>
+</head>
+<body>
+<div id="name" class="hud"></div>
+<div id="labels"></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/libs/fflate.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/FBXLoader.js"></script>
+<script src="figkit.js"></script>
+<script src="clay-v3.js"></script>
+<script src="motion.js"></script>
+<script src="grass.js"></script>
+<script>
+// The character sheet renderer. ?who=rifleman1|rifleman3|captain|radioman|corpsman|nva  ?mode=turn|face|walk|row
+// The contact page is sheet/sheet.html; this page makes its images and videos.
+(function () {
+  'use strict';
+  window.__ready = false;
+  const params = new URLSearchParams(location.search);
+  const FK = window.FK, V3 = window.V3, CM = window.CM, V = FK.V, lin = FK.lin, TAU = Math.PI * 2;
+  const WHO = params.get('who') || 'rifleman1', MODE = params.get('mode') || 'turn';
+  // ---------- renderer: ACES, sRGB, a warm key low in the south-west, warm ground bounce, a warm rim from behind ----------
+  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setPixelRatio(Math.min(2, devicePixelRatio));
+  renderer.setSize(innerWidth, innerHeight);
+  renderer.outputEncoding = THREE.sRGBEncoding;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.1;
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  document.body.appendChild(renderer.domElement);
+  const scene = new THREE.Scene();
+  {
+    const c = document.createElement('canvas'); c.width = 4; c.height = 512;
+    const g = c.getContext('2d'), gr = g.createLinearGradient(0, 0, 0, 512);
+    gr.addColorStop(0, '#6a98c6'); gr.addColorStop(0.32, '#b2c9da'); gr.addColorStop(0.56, '#efd8ae'); gr.addColorStop(1, '#e3c08e');
+    g.fillStyle = gr; g.fillRect(0, 0, 4, 512);
+    const tex = new THREE.CanvasTexture(c); tex.encoding = THREE.sRGBEncoding;
+    scene.background = tex;
+  }
+  scene.fog = new THREE.Fog(lin(0xe6cfa2), 35, 150);
+  const camera = new THREE.PerspectiveCamera(30, innerWidth / innerHeight, 0.05, 500);
+  scene.add(new THREE.HemisphereLight(0xdfe9ff, 0xc9b07a, 0.66));
+  const sun = new THREE.DirectionalLight(0xffdfb4, 1.5);
+  sun.castShadow = true;
+  sun.shadow.mapSize.set(4096, 4096);
+  sun.shadow.bias = -0.0003; sun.shadow.normalBias = 0.015;
+  scene.add(sun, sun.target);
+  function aimSun(x, z, r) { sun.target.position.set(x, 0, z); sun.position.set(x - 9, 8, z + 10); Object.assign(sun.shadow.camera, { left: -r, right: r, top: r, bottom: -r, near: 1, far: 60 }); sun.shadow.camera.updateProjectionMatrix(); }
+  const rimL = new THREE.DirectionalLight(0xffd29a, 0.55); rimL.position.set(7, 5, -9); scene.add(rimL);
+  const fill = new THREE.DirectionalLight(0xfff4e6, 0.22); fill.position.set(4, 4, 30); scene.add(fill);
+
+  // the grass trodden flat round the figure (the turnaround cameras stand 5 m off on every side), along the walk and in
+  // front of the row of twelve; bare under his feet
+  const GRASS_OPTS = {
+    trample: (x, z) => (Math.hypot(x, z) < 7 || Math.abs(z) < 2.4 || (z > 0 && z < 40 && Math.abs(x) < 8) ? 1 : 0),
+    clear: (x, z) => Math.hypot(x, z) < 3.6 || Math.abs(z) < 0.45 || (Math.abs(x) < 7.5 && z > -1.5 && z < 13.5),
+  };
+  // ---------- the ground: gentle folds, a worn trail along z = 0, short grass and tufts, elephant grass set back ----------
+  const ground = (x, z) => 0.18 * Math.sin(x * 0.11 + 0.6) * Math.cos(z * 0.09) + 0.1 * Math.sin(x * 0.27 - z * 0.13) + 0.025 * Math.sin(x * 1.3 + z * 0.9) * Math.min(1, Math.abs(z) / 2);
+  {
+    const geo = new THREE.PlaneGeometry(220, 160, 220, 160); geo.rotateX(-Math.PI / 2);
+    const p = geo.attributes.position;
+    for (let i = 0; i < p.count; i++) p.setY(i, ground(p.getX(i), p.getZ(i)));
+    geo.computeVertexNormals();
+    FK.paint(geo, (x, y, z) => {
+      // leaf litter and dry earth under the elephant grass (grass-study treatment C), lighter where it is trodden
+      const nn = FK.noise(x * 0.9 + 4, 0, z * 0.9), tr = GRASS_OPTS.trample(x, z);
+      if (GRASS_OPTS.clear(x, z) || tr > 0.95) return nn > 0.55 ? 0x66553a : 0x5c4c35;
+      return nn < 0.4 ? 0x3b3326 : nn < 0.7 ? 0x463d2b : 0x4d442f;
+    });
+    const m = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1 }));
+    m.receiveShadow = true; scene.add(m);
+  }
+  // ---------- the elephant grass: grass-study treatment C (grass.js), 60 x 60 m, trodden flat where the men stand and walk ----------
+  const wind = { value: 0 };
+  const sunDir = new THREE.Vector3(-9, 8, 10).normalize();
+  const tallGrass = TallGrass.create({ scene, ground, half: 30, skirt: 20, spacing: 0.72, trample: GRASS_OPTS.trample, clear: GRASS_OPTS.clear, sunDir, sunCol: new THREE.Color(0xffdfb4).convertSRGBToLinear().multiplyScalar(1.5) });
+
+  const CAST = {
+    rifleman1: { name: 'Rifleman', note: 'face 1, sleeves rolled, repellent bottle in the band', spec: { kind: 'rifleman', face: 0, rolled: true, stubble: 0.25, band: [['bottle', -0.42]] } },
+    rifleman3: { name: 'Rifleman', note: 'face 3, darker skin, sleeves down, towel round the neck', spec: { kind: 'rifleman', face: 2, skin: V3.SKINS[5], hair: 0x18110d, rolled: false, towel: true, stubble: 0.35, band: [['pack', 0.5]] } },
+    captain: { name: 'Captain Himmer', note: 'no rifle; map in hand, pistol belt, map case; plain brown crop until a likeness is worked from his photographs', spec: { kind: 'captain', face: 2, hair: 0x5a4028, skin: V3.SKINS[1], rolled: false, band: [] } },
+    radioman: { name: 'Radioman', note: 'PRC-25 on his back, whip antenna, handset on the strap', spec: { kind: 'radioman', face: 3, rolled: true, band: [['bottle', 0.45]] } },
+    corpsman: { name: 'Corpsman', note: 'two aid bags, pistol belt, no rifle', spec: { kind: 'corpsman', face: 1, rolled: true, towel: false, band: [['spoon', -0.5]] } },
+    nva: { name: 'NVA soldier', note: 'steel helmet with net, chest rig, AK-47', spec: { kind: 'nva', face: 4 } },
+  };
+  const MAT = V3.material();
+  const figs = [];
+  function add(spec, o) {
+    const F = V3.build(Object.assign({ mat: MAT }, spec));
+    const f = CM.figure(F, Object.assign({ seed: 3, ground, x: 0, z: 0, yaw: 0, pinned: true, mood: 'calm' }, o));
+    scene.add(F.root); figs.push(f); return f;
+  }
+  const C = CAST[WHO] || CAST.rifleman1;
+  const names = document.getElementById('name');
+  const cams = [], views = [];
+  let follow = null;
+  async function setup() {
+    const T = V3.build({ kind: 'rifleman', mat: MAT });
+    await CM.init(T);
+    await CM.load(['Rifle Idle', 'Walk With Rifle']);
+    if (MODE === 'row') {
+      names.innerHTML = 'Twelve riflemen from twelve seeds<span>V3.make(seed, "rifleman"): face, skin, height, build, stubble, sleeves, towel, band</span>';
+      for (let i = 0; i < 12; i++) {
+        const F = V3.make(40 + i * 11, 'rifleman', 1, MAT);
+        const f = CM.figure(F, { seed: 40 + i, ground, x: (i - 5.5) * 0.95, z: 0, yaw: 0, pinned: true, mood: 'calm', vary: true });
+        scene.add(F.root); figs.push(f); CM.play(f, 'Rifle Idle', { fade: 0, time: i * 0.6 });
+      }
+      const c = new THREE.PerspectiveCamera(30, innerWidth / innerHeight, 0.05, 500);
+      c.position.set(0, 1.35, 12.5); c.lookAt(0, 0.95, 0); cams.push(c); views.push([0, 0, 1, 1]);
+      aimSun(0, 0, 9);
+    } else {
+      const f = add(C.spec, MODE === 'walk' ? { pinned: false, x: -3, yaw: Math.PI / 2 } : {});
+      CM.play(f, MODE === 'walk' ? 'Walk With Rifle' : 'Rifle Idle', { fade: 0, time: 0.4 });
+      names.innerHTML = C.name + '<span>' + C.note + ' · ' + f.F.tris.toLocaleString('en-US') + ' triangles</span>';
+      if (MODE === 'turn') {
+        const labs = ['front', 'three-quarter', 'side', 'back'], ang = [0, 0.75, Math.PI / 2, Math.PI];
+        for (let i = 0; i < 4; i++) {
+          const c = new THREE.PerspectiveCamera(24, (innerWidth / 4) / innerHeight, 0.05, 500);
+          c.position.set(Math.sin(ang[i]) * 5.2, 1.35, Math.cos(ang[i]) * 5.2); c.lookAt(0, 0.84, 0); cams.push(c); views.push([i / 4, 0, 1 / 4, 1]);
+          const d = document.createElement('div'); d.className = 'hud vl'; d.style.left = (i * 25) + '%'; d.style.width = '25%'; d.textContent = labs[i]; document.getElementById('labels').appendChild(d);
+        }
+        aimSun(0, 0, 3);
+      } else if (MODE === 'face') {
+        // the nearest the scene camera ever comes: 6 m, with a long lens so the face fills the frame
+        const c = new THREE.PerspectiveCamera(8, innerWidth / innerHeight, 0.05, 500); cams.push(c); views.push([0, 0, 1, 1]);
+        follow = (t) => { f.b.mixamorigHead.getWorldPosition(hp); const a = 0.35; c.position.set(hp.x + Math.sin(a) * 6, hp.y + 0.12, hp.z + Math.cos(a) * 6); c.lookAt(hp.x, hp.y + 0.1, hp.z); };
+        names.innerHTML += '<span>camera 6 m away, 8° lens</span>';
+        aimSun(0, 0, 3);
+      } else {
+        const c = new THREE.PerspectiveCamera(28, innerWidth / innerHeight, 0.05, 500); cams.push(c); views.push([0, 0, 1, 1]);
+        let cx = null;
+        follow = (t, dt) => { f.b.mixamorigHips.getWorldPosition(hp); cx = cx === null ? hp.x : cx + (hp.x - cx) * Math.min(1, dt * 3); const gy = ground(cx, 0); c.position.set(cx + 2.3, gy + 1.45, 4.4); c.lookAt(cx + 0.2, gy + 0.8, 0); aimSun(cx, 0, 4); };
+      }
+    }
+  }
+  const hp = V(0, 0, 0);
+  renderer.autoClear = false;
+  let last = null, t = 0;
+  function frame(now) {
+    requestAnimationFrame(frame);
+    if (!window.__ready) return;
+    if (last === null) last = now;
+    const dt = Math.min(0.1, Math.max(0.001, (now - last) / 1000)); last = now; t += dt;
+    wind.value = t; FK.time.value = t;
+    for (const f of figs) CM.update(f, dt, t);
+    if (follow) follow(t, dt);
+    const W = innerWidth, H = innerHeight;
+    renderer.setScissorTest(false); renderer.setViewport(0, 0, W, H); renderer.clear(); renderer.setScissorTest(true);
+    cams.forEach((c, i) => { const [x, y, w, h] = views[i]; const X = Math.round(x * W), Wd = Math.round(w * W); renderer.setViewport(X, 0, Wd, H); renderer.setScissor(X, 0, Wd, H); c.aspect = Wd / H; c.updateProjectionMatrix(); tallGrass.update(c, t); renderer.render(scene, c); });
+  }
+  addEventListener('resize', () => renderer.setSize(innerWidth, innerHeight));
+  setup().then(() => { window.__ready = true; }).catch((e) => { console.error(e); names.textContent = 'failed: ' + e.message; window.__ready = true; });
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

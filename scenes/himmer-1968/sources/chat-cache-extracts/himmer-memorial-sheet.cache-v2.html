@@ -1,0 +1,511 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="color-scheme" content="light dark">
+<title>Capt Lawrence Himmer, USMC — Hill 689, 16 April 1968</title>
+<style>
+  :root{
+    color-scheme:light dark;
+    /* daylight sheet */
+    --paper:#efe6d0;      /* aged map-sheet buff */
+    --paper-deep:#e4d7ba; /* panel tint */
+    --ink:#2b2620;        /* umber-black */
+    --contour:#8a7350;    /* contour ink */
+    --canopy:#4e5f44;     /* jungle olive — Marine units */
+    --clay:#8f3323;       /* Khe Sanh red clay — enemy / loss */
+    --sky:#3f5966;        /* monsoon slate — Navy / links */
+    --muted:var(--muted);
+    --marine-deep:var(--marine-deep);
+    --gray:#655d50;
+    --journal-bg:#f5efde;
+    --faint:rgba(43,38,32,.16);
+  }
+  @media (prefers-color-scheme:dark){
+    :root{
+      /* night ops sheet — red-lamp field desk */
+      --paper:#221e19;
+      --paper-deep:#2b261f;
+      --ink:#eadfc8;
+      --contour:#b99f73;
+      --canopy:#9db38a;
+      --clay:#d07b63;
+      --sky:#93b0bd;
+      --muted:#bcae93;
+      --marine-deep:#b4c6a1;
+      --gray:#a8a08f;
+      --journal-bg:#282218;
+      --faint:rgba(234,223,200,.18);
+    }
+  }
+  *{box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%}
+  body{
+    margin:0; background:var(--paper); color:var(--ink);
+    font-family:Georgia,"Times New Roman",serif;
+    font-size:17px; line-height:1.62;
+  }
+  .sheet{max-width:780px; margin:0 auto; padding:0 18px 72px;}
+  /* ---------- typographic roles ---------- */
+  .disp{font-family:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif;}
+  .mono{font-family:"Courier New",Courier,monospace;}
+  a{color:var(--sky); text-decoration-color:var(--sky);}
+  a:focus-visible, button:focus-visible{outline:2px solid var(--sky); outline-offset:2px;}
+  sup.ref{font-size:.62em; letter-spacing:.02em;}
+  sup.ref a{text-decoration:none; color:var(--sky);}
+  /* ---------- sheet corner / hero ---------- */
+  header.corner{
+    border-bottom:3px double var(--contour);
+    padding:26px 0 20px; margin-bottom:8px;
+  }
+  .corner .meta{
+    display:flex; justify-content:space-between; flex-wrap:wrap; gap:4px 16px;
+    font-family:"Courier New",Courier,monospace; font-size:11px; letter-spacing:.08em;
+    text-transform:uppercase; color:var(--contour);
+  }
+  h1{
+    margin:.55em 0 .1em; font-weight:400; letter-spacing:.045em;
+    font-size:clamp(30px,7vw,46px); line-height:1.08; text-transform:uppercase;
+  }
+  .lifeline{
+    font-family:"Courier New",Courier,monospace; font-size:13px; letter-spacing:.14em;
+    color:var(--ink); margin:.4em 0 0;
+  }
+  .lifeline b{color:var(--clay); font-weight:700;}
+  .standfirst{margin:1.1em 0 0; font-size:18.5px; font-style:italic; color:var(--muted);}
+  /* ---------- chapters ---------- */
+  .eyebrow{
+    font-family:"Courier New",Courier,monospace; font-size:11px; letter-spacing:.22em;
+    text-transform:uppercase; color:var(--contour); margin:56px 0 6px;
+    border-top:1px solid var(--faint); padding-top:14px;
+  }
+  h2{font-weight:400; font-size:clamp(22px,4.6vw,29px); margin:.1em 0 .5em; letter-spacing:.02em;}
+  h3{font-weight:700; font-size:16px; letter-spacing:.06em; text-transform:uppercase; margin:1.6em 0 .4em;}
+  p{margin:.85em 0;}
+  .pull{
+    margin:1.6em 0; padding:14px 18px; border-left:3px solid var(--canopy);
+    background:var(--paper-deep); font-size:19px; font-style:italic;
+  }
+  .pull .who{display:block; margin-top:.5em; font-style:normal; font-family:"Courier New",Courier,monospace; font-size:12px; letter-spacing:.1em; text-transform:uppercase; color:var(--contour);}
+  .statstrip{
+    display:flex; flex-wrap:wrap; gap:0; border:1px solid var(--contour);
+    margin:1.4em 0;
+  }
+  .statstrip div{flex:1 1 33%; min-width:140px; padding:12px 14px; border-right:1px solid var(--faint);}
+  .statstrip div:last-child{border-right:none;}
+  .statstrip .n{font-family:"Courier New",Courier,monospace; font-size:24px; letter-spacing:.02em; display:block;}
+  .statstrip .l{font-size:12.5px; text-transform:uppercase; letter-spacing:.09em; color:var(--muted);}
+  /* ---------- map panels ---------- */
+  figure.map{margin:1.6em -18px; background:var(--paper-deep); border-top:1px solid var(--contour); border-bottom:1px solid var(--contour); padding:14px 12px 10px;}
+  figure.map svg{display:block; width:100%; height:auto;}
+  figcaption{font-family:"Courier New",Courier,monospace; font-size:11.5px; letter-spacing:.05em; color:var(--muted); padding:10px 6px 2px; line-height:1.55;}
+  .phases{display:flex; flex-wrap:wrap; gap:8px; padding:4px 6px 10px;}
+  .phases button{
+    font-family:"Courier New",Courier,monospace; font-size:11.5px; letter-spacing:.06em;
+    text-transform:uppercase; padding:7px 11px; border:1px solid var(--contour);
+    background:var(--paper); color:var(--ink); cursor:pointer;
+  }
+  .phases button[aria-pressed="true"]{background:var(--canopy); color:var(--paper); border-color:var(--canopy);}
+  .layer{transition:opacity .35s ease;}
+  .dim{opacity:.13;}
+  @media (prefers-reduced-motion:reduce){.layer{transition:none;}}
+  /* ---------- typed journal ---------- */
+  .journal{border:1px solid var(--contour); background:var(--journal-bg); margin:1.4em 0; padding:6px 0;}
+  .journal .head{font-family:"Courier New",Courier,monospace; font-size:11px; letter-spacing:.18em; text-transform:uppercase; color:var(--contour); padding:10px 16px 6px; border-bottom:1px dashed var(--faint);}
+  .entry{display:flex; gap:14px; padding:11px 16px; border-bottom:1px dashed var(--faint); font-size:15.5px;}
+  .entry:last-child{border-bottom:none;}
+  .entry time{font-family:"Courier New",Courier,monospace; font-size:13px; letter-spacing:.04em; white-space:nowrap; color:var(--clay); min-width:86px; padding-top:2px;}
+  .entry p{margin:0;}
+  /* ---------- tables ---------- */
+  table{width:100%; border-collapse:collapse; margin:1.2em 0; font-size:14px;}
+  caption{text-align:left; font-family:"Courier New",Courier,monospace; font-size:11px; letter-spacing:.16em; text-transform:uppercase; color:var(--contour); padding-bottom:8px;}
+  th,td{padding:8px 10px; border:1px solid var(--faint); vertical-align:top; text-align:left;}
+  th{font-family:"Courier New",Courier,monospace; font-size:11px; letter-spacing:.1em; text-transform:uppercase; background:var(--paper-deep);}
+  td.mono{font-size:12.5px;}
+  .tag{font-family:"Courier New",Courier,monospace; font-size:10.5px; letter-spacing:.06em; text-transform:uppercase; padding:1px 6px; border:1px solid;}
+  .tag.src{color:var(--canopy); border-color:var(--canopy);}
+  .tag.der{color:var(--clay); border-color:var(--clay);}
+  .tag.apx{color:var(--sky); border-color:var(--sky);}
+  /* ---------- ledger ---------- */
+  .ledger{border:1px solid var(--contour); margin:1.4em 0;}
+  .ledger .row{display:flex; justify-content:space-between; gap:12px; padding:10px 16px; border-bottom:1px dashed var(--faint); font-size:15.5px;}
+  .ledger .row:last-child{border-bottom:none;}
+  .ledger .row b{font-family:"Courier New",Courier,monospace; font-weight:700; color:var(--clay); white-space:nowrap;}
+  /* ---------- sources / notes ---------- */
+  ol.sources{padding-left:1.4em; font-size:14px;}
+  ol.sources li{margin:.55em 0;}
+  .notes{border:1px dashed var(--contour); background:var(--paper-deep); padding:14px 18px; margin:1.4em 0; font-size:14.5px;}
+  .notes h3{margin-top:.2em;}
+  footer.foot{margin-top:64px; border-top:3px double var(--contour); padding-top:18px; font-size:14.5px;}
+  .smallcaps{letter-spacing:.08em; text-transform:uppercase; font-size:13px;}
+</style>
+</head>
+<body>
+<div class="sheet">
+
+<!-- ================= SHEET CORNER ================= -->
+<header class="corner">
+  <div class="meta">
+    <span>Family memorial sheet · not an official publication</span>
+    <span>Quang Tri Province · RVN · Sheet ref 6342-III</span>
+  </div>
+  <h1 class="disp">Lawrence Himmer</h1>
+  <p class="lifeline">CAPTAIN · USMC · CO, COMPANY C, 1ST BN, 9TH MARINES · 23 JUL 1938 — <b>16 APR 1968</b> · THE WALL, PANEL 50E · LINE 14</p>
+  <p class="standfirst">Husband of Sharon. Father of five — the youngest born six weeks after he fell. Killed leading his company up a nameless hill southwest of Khe Sanh, going to the relief of other Marines.</p>
+</header>
+
+<blockquote class="pull">&ldquo;Was with Charlie Company the day the Skipper died. Will never forget.&rdquo;
+  <span class="who">— Jim Thompson, C/1/9, remembrance left at the Wall of Faces, 2020 <sup class="ref"><a href="#ref-4">[4]</a></sup></span>
+</blockquote>
+
+<!-- ================= I. THE MAN ================= -->
+<p class="eyebrow">Sheet I · The Man</p>
+<h2 class="disp">Larry</h2>
+<p>Lawrence &ldquo;Larry&rdquo; Himmer was 29, from Chula Vista, California, on his third tour in Vietnam.<sup class="ref"><a href="#ref-4">[4]</a></sup> Family remembrances describe a gifted artist and an easy people-person — loving, considerate, quick with an encouraging word — an active Latter-day Saint who held the office of Elder, devoted to his parents and siblings.<sup class="ref"><a href="#ref-4">[4]</a></sup> He wrote home to his four children — Richard, Dale, Teresa, and LaShel — telling them to mind their mother, Sharon, who was expecting. Jennifer Lana Himmer was born May 31, 1968, six weeks after her father was killed.<sup class="ref"><a href="#ref-4">[4]</a></sup></p>
+<p>His ribbon set includes the Good Conduct Medal — an award only enlisted Marines can earn — which points to a start in the ranks and a commission earned later: what the Corps calls a Mustang.<sup class="ref"><a href="#ref-5">[5]</a></sup> It fits the man the records show: a 29-year-old captain, three tours deep, commanding a rifle company. Before his last tour, the family recalls, he left with his affairs in order.<sup class="ref"><a href="#ref-4">[4]</a></sup></p>
+
+<!-- ================= II. THE WALKING DEAD ================= -->
+<p class="eyebrow">Sheet II · The Battalion</p>
+<h2 class="disp">The Walking Dead</h2>
+<p>1st Battalion, 9th Marines carried the highest killed-in-action rate of any Marine battalion in history: of 2,892 Marines and corpsmen who served in it across 47 months in Vietnam, 747 were killed — 25.89 percent.<sup class="ref"><a href="#ref-15">[15]</a></sup> Through the first months of 1968 the battalion helped hold Khe Sanh Combat Base through the 77-day siege, dug in at the Rock Quarry west of the base under fire that ran to hundreds of incoming rounds a day.<sup class="ref"><a href="#ref-1">[1]</a></sup></p>
+<p>The siege was lifted by Operation Pegasus in early April. In its closing days 1/9 went back on the offensive, taking Hill 552 on 7 April and Hill 689 on 8 April against accurate mortar fire.<sup class="ref"><a href="#ref-1">[1]</a></sup> On 15 April 1968 at 0800, Operation Scotland II opened — the Marines pushing out to clear the hills the NVA had held around the base.<sup class="ref"><a href="#ref-7">[7]</a></sup> 1/9, under LtCol John &ldquo;Blackie&rdquo; Cahill (in command since 1 April), set its battalion perimeter and operations center on Hill 689.<sup class="ref"><a href="#ref-1">[1]</a></sup><sup class="ref"><a href="#ref-3">[3]</a></sup></p>
+<div class="statstrip">
+  <div><span class="n mono">77 days</span><span class="l">Siege of Khe Sanh</span></div>
+  <div><span class="n mono">25.89%</span><span class="l">1/9 killed in action, 1965–69</span></div>
+  <div><span class="n mono">3rd</span><span class="l">Larry&rsquo;s Vietnam tour</span></div>
+</div>
+
+<!-- ================= III. THE GROUND ================= -->
+<p class="eyebrow">Sheet III · The Ground</p>
+<h2 class="disp">Two miles west of Khe Sanh</h2>
+<p>Everything on this sheet sits within four miles. Khe Sanh Combat Base on its plateau; the Rock Quarry at its western edge, 1/9&rsquo;s home through the siege; Hill 552 and Hill 689 on the ridge running west — both taken by 1/9 in early April; and, about a mile southwest of Hill 689, the unnamed elephant-grass ridge the official history calls only &ldquo;a small adjoining hill.&rdquo; The Marines who fought there knew it by its map elevation, Hill 600 — and afterward as Dead Man&rsquo;s Hill.<sup class="ref"><a href="#ref-1">[1]</a></sup><sup class="ref"><a href="#ref-3">[3]</a></sup></p>
+<p><b>Hill 689 was where 1/9 lived — the perimeter, the CP, the ops center.</b> The battle of 16 April was fought on the other hill, a mile to its southwest.<sup class="ref"><a href="#ref-1">[1]</a></sup><sup class="ref"><a href="#ref-3">[3]</a></sup></p>
+
+<figure class="map" aria-label="Overview map of the Khe Sanh area, April 1968">
+<svg viewBox="0 0 1000 560" role="img" aria-labelledby="ov-title">
+  <title id="ov-title">Overview: Khe Sanh Combat Base to Hill 689 and the battle hill, April 1968</title>
+  <!-- paper -->
+  <rect x="0" y="0" width="1000" height="560" fill="var(--paper)"/>
+  <!-- vegetation tint -->
+  <ellipse cx="430" cy="300" rx="330" ry="200" fill="var(--canopy)" opacity="0.07"/>
+  <ellipse cx="820" cy="180" rx="200" ry="130" fill="var(--canopy)" opacity="0.05"/>
+  <!-- UTM grid (sheet 6342-III, 1 km squares shown every 2 km) -->
+  <g stroke="var(--contour)" stroke-width="0.7" opacity="0.35">
+    <line x1="258" y1="0" x2="258" y2="560"/><line x1="403" y1="0" x2="403" y2="560"/>
+    <line x1="547" y1="0" x2="547" y2="560"/><line x1="691" y1="0" x2="691" y2="560"/>
+    <line x1="835" y1="0" x2="835" y2="560"/>
+    <line x1="0" y1="31" x2="1000" y2="31"/><line x1="0" y1="176" x2="1000" y2="176"/>
+    <line x1="0" y1="320" x2="1000" y2="320"/><line x1="0" y1="465" x2="1000" y2="465"/>
+  </g>
+  <g font-family="'Courier New',monospace" font-size="11" fill="var(--contour)">
+    <text x="262" y="554">76</text><text x="407" y="554">78</text><text x="551" y="554">80</text>
+    <text x="695" y="554">82</text><text x="839" y="554">84</text>
+    <text x="6" y="44">44</text><text x="6" y="189">42</text><text x="6" y="333">40</text><text x="6" y="478">38</text>
+    <text x="870" y="554">EASTINGS · XD</text>
+  </g>
+  <!-- Route 9 -->
+  <path d="M 1000 425 C 930 418, 895 414, 862 416 C 760 424, 560 450, 400 462 C 300 470, 220 474, 154 478 C 100 481, 50 486, 0 492" fill="none" stroke="var(--ink)" stroke-width="2.2" stroke-dasharray="9 4" opacity="0.55"/>
+  <text x="700" y="450" font-family="'Courier New',monospace" font-size="11.5" fill="var(--ink)" opacity="0.7">ROUTE 9</text>
+  <!-- contours: Hill 689 -->
+  <g fill="none" stroke="var(--contour)" stroke-width="1">
+    <ellipse cx="568" cy="255" rx="66" ry="44" opacity="0.8"/>
+    <ellipse cx="568" cy="255" rx="44" ry="28" opacity="0.9"/>
+    <ellipse cx="568" cy="255" rx="22" ry="13"/>
+  </g>
+  <!-- contours: battle hill -->
+  <g fill="none" stroke="var(--contour)" stroke-width="1">
+    <ellipse cx="487" cy="337" rx="58" ry="40" opacity="0.8"/>
+    <ellipse cx="487" cy="337" rx="36" ry="24" opacity="0.9"/>
+    <ellipse cx="487" cy="337" rx="16" ry="10"/>
+  </g>
+  <!-- contours: Hill 552 -->
+  <g fill="none" stroke="var(--contour)" stroke-width="1" opacity="0.75">
+    <ellipse cx="654" cy="224" rx="40" ry="26"/>
+    <ellipse cx="654" cy="224" rx="18" ry="11"/>
+  </g>
+  <!-- KSCB -->
+  <g>
+    <rect x="800" y="152" width="86" height="14" fill="none" stroke="var(--ink)" stroke-width="2" transform="rotate(-8 843 159)"/>
+    <line x1="804" y1="164" x2="884" y2="153" stroke="var(--ink)" stroke-width="1"/>
+    <text x="792" y="140" font-family="'Courier New',monospace" font-size="12.5" fill="var(--ink)">KHE SANH COMBAT BASE</text>
+    <text x="792" y="188" font-family="'Courier New',monospace" font-size="10.5" fill="var(--muted)">airstrip · XD 841 421</text>
+  </g>
+  <!-- Rock Quarry -->
+  <circle cx="715" cy="200" r="4" fill="var(--ink)"/>
+  <text x="724" y="197" font-family="'Courier New',monospace" font-size="11" fill="var(--ink)">ROCK QUARRY †</text>
+  <text x="724" y="210" font-family="'Courier New',monospace" font-size="10" fill="var(--muted)">1/9 during the siege</text>
+  <!-- Hill 552 -->
+  <circle cx="654" cy="224" r="4" fill="var(--ink)"/>
+  <text x="600" y="200" font-family="'Courier New',monospace" font-size="11" fill="var(--ink)">HILL 552 †</text>
+  <text x="600" y="212" font-family="'Courier New',monospace" font-size="10" fill="var(--muted)">1/9, 7 Apr</text>
+  <!-- Hill 689 -->
+  <circle cx="568" cy="255" r="5.5" fill="var(--canopy)"/>
+  <text x="548" y="235" font-family="'Courier New',monospace" font-size="12.5" font-weight="bold" fill="var(--marine-deep)">HILL 689</text>
+  <text x="470" y="248" font-family="'Courier New',monospace" font-size="10.5" fill="var(--marine-deep)">1/9 perimeter &amp; CP</text>
+  <text x="548" y="292" font-family="'Courier New',monospace" font-size="10" fill="var(--muted)">XD 803 409</text>
+  <!-- Battle hill -->
+  <circle cx="487" cy="337" r="5.5" fill="var(--clay)"/>
+  <text x="330" y="330" font-family="'Courier New',monospace" font-size="12.5" font-weight="bold" fill="var(--clay)">&ldquo;HILL 600&rdquo; ‡</text>
+  <text x="300" y="344" font-family="'Courier New',monospace" font-size="10.5" fill="var(--clay)">Dead Man&rsquo;s Hill · 16 Apr battle</text>
+  <!-- 1 mile tie line -->
+  <line x1="568" y1="255" x2="487" y2="337" stroke="var(--clay)" stroke-width="1" stroke-dasharray="3 4" opacity="0.7"/>
+  <text x="540" y="312" font-family="'Courier New',monospace" font-size="10" fill="var(--clay)" opacity="0.9">~1 mi</text>
+  <!-- Khe Sanh village -->
+  <circle cx="862" cy="416" r="3.5" fill="var(--ink)" opacity="0.7"/>
+  <text x="800" y="402" font-family="'Courier New',monospace" font-size="10.5" fill="var(--muted)">KHE SANH VILLE †</text>
+  <!-- Lang Vei -->
+  <circle cx="154" cy="478" r="3.5" fill="var(--ink)" opacity="0.7"/>
+  <text x="120" y="500" font-family="'Courier New',monospace" font-size="10.5" fill="var(--muted)">LANG VEI</text>
+  <text x="40" y="516" font-family="'Courier New',monospace" font-size="10" fill="var(--clay)">NVA 66th Regt sighted this sector, AM 16 Apr</text>
+  <!-- north arrow -->
+  <g transform="translate(952,54)">
+    <line x1="0" y1="22" x2="0" y2="-16" stroke="var(--ink)" stroke-width="1.6"/>
+    <path d="M 0 -22 L -6 -8 L 6 -8 Z" fill="var(--ink)"/>
+    <text x="-5" y="40" font-family="'Courier New',monospace" font-size="12" fill="var(--ink)">N</text>
+  </g>
+  <!-- scale bar : 1 km = 72.1 px -->
+  <g transform="translate(30,520)">
+    <line x1="0" y1="0" x2="144" y2="0" stroke="var(--ink)" stroke-width="2"/>
+    <line x1="0" y1="-5" x2="0" y2="5" stroke="var(--ink)" stroke-width="2"/>
+    <line x1="72" y1="-4" x2="72" y2="4" stroke="var(--ink)" stroke-width="1.4"/>
+    <line x1="144" y1="-5" x2="144" y2="5" stroke="var(--ink)" stroke-width="2"/>
+    <text x="-3" y="18" font-family="'Courier New',monospace" font-size="10.5" fill="var(--ink)">0</text>
+    <text x="64" y="18" font-family="'Courier New',monospace" font-size="10.5" fill="var(--ink)">1</text>
+    <text x="126" y="18" font-family="'Courier New',monospace" font-size="10.5" fill="var(--ink)">2 km</text>
+  </g>
+</svg>
+<figcaption>OVERVIEW · Khe Sanh sector, April 1968. Drawn to a consistent scale from sourced coordinates (see coordinate register). Grid lines are 2&nbsp;km, keyed to the real 1:50,000 sheet 6342-III &ldquo;Huong Hoa.&rdquo; † position approximate · ‡ position derived. Sources <a href="#ref-1">[1]</a> <a href="#ref-3">[3]</a> <a href="#ref-8">[8]</a> <a href="#ref-10">[10]</a> <a href="#ref-11">[11]</a>.</figcaption>
+</figure>
+
+<table>
+  <caption>Coordinate register</caption>
+  <tr><th>Feature</th><th>Grid (XD)</th><th>Lat / Long</th><th>Status</th></tr>
+  <tr><td>Khe Sanh Combat Base</td><td class="mono">≈ 841 421</td><td class="mono">16°39′15″N 106°43′27″E</td><td><span class="tag src">sourced</span> <sup class="ref"><a href="#ref-7">[7]</a></sup></td></tr>
+  <tr><td>Hill 689 — 1/9 perimeter</td><td class="mono">803 409</td><td class="mono">16°38′35″N 106°41′20″E</td><td><span class="tag src">sourced</span> <sup class="ref"><a href="#ref-8">[8]</a></sup><sup class="ref"><a href="#ref-10">[10]</a></sup></td></tr>
+  <tr><td>&ldquo;Hill 600&rdquo; — battle hill</td><td class="mono">≈ 792 398</td><td class="mono">≈ 16°37′58″N 106°40′42″E</td><td><span class="tag der">derived</span> — plotted 1 mi SW of 689 per veteran account <sup class="ref"><a href="#ref-3">[3]</a></sup></td></tr>
+  <tr><td>Hill 552 · Rock Quarry · Khe Sanh ville</td><td class="mono">—</td><td class="mono">—</td><td><span class="tag apx">approx</span> — placed from narrative relationships <sup class="ref"><a href="#ref-1">[1]</a></sup></td></tr>
+</table>
+
+<!-- ================= IV. 16 APRIL ================= -->
+<p class="eyebrow">Sheet IV · The Battle</p>
+<h2 class="disp">16 April 1968</h2>
+<p>That morning, Army air-cavalry scouts finishing Operation Pegasus spotted what the Marines most needed to know: all elements of the NVA 66th Regiment, 304th Division, had moved back into the hills near Route 9 and Lang Vei. The report never reached Marine commanders.<sup class="ref"><a href="#ref-3">[3]</a></sup> So when Company A stepped off its patrol at 0700, battalion believed the ridge a mile southwest held perhaps a squad. It held a fortified complex of a regiment that had been digging for weeks.</p>
+<p>Use the phase buttons to replay the day on the map.</p>
+
+<figure class="map" aria-label="Battle map, 16–17 April 1968, with phase controls">
+<div class="phases" role="group" aria-label="Battle phases">
+  <button type="button" data-phase="all" aria-pressed="true">All phases</button>
+  <button type="button" data-phase="ph1" aria-pressed="false">0700 · Patrol &amp; ambush</button>
+  <button type="button" data-phase="ph2" aria-pressed="false">1320 · Relief attack</button>
+  <button type="button" data-phase="ph3" aria-pressed="false">1745 · Withdrawal</button>
+</div>
+<svg viewBox="0 0 1000 720" role="img" aria-labelledby="bt-title">
+  <title id="bt-title">Battle map: the ambush of Company A and the relief attack by Companies C and D, 16 to 17 April 1968</title>
+  <defs>
+    <marker id="ah-navy" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="var(--sky)"/></marker>
+    <marker id="ah-olive" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="var(--canopy)"/></marker>
+    <marker id="ah-gray" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="var(--gray)"/></marker>
+  </defs>
+  <rect x="0" y="0" width="1000" height="720" fill="var(--paper)"/>
+  <!-- vegetation -->
+  <ellipse cx="420" cy="480" rx="320" ry="240" fill="var(--canopy)" opacity="0.08"/>
+  <ellipse cx="720" cy="230" rx="230" ry="180" fill="var(--canopy)" opacity="0.06"/>
+  <!-- 1 km UTM grid -->
+  <g stroke="var(--contour)" stroke-width="0.7" opacity="0.35">
+    <line x1="93" y1="0" x2="93" y2="720"/><line x1="353" y1="0" x2="353" y2="720"/>
+    <line x1="614" y1="0" x2="614" y2="720"/><line x1="874" y1="0" x2="874" y2="720"/>
+    <line x1="0" y1="187" x2="1000" y2="187"/><line x1="0" y1="447" x2="1000" y2="447"/>
+    <line x1="0" y1="708" x2="1000" y2="708"/>
+  </g>
+  <g font-family="'Courier New',monospace" font-size="11" fill="var(--contour)">
+    <text x="97" y="716">78</text><text x="357" y="716">79</text><text x="618" y="716">80</text><text x="878" y="716">81</text>
+    <text x="6" y="182">41</text><text x="6" y="442">40</text>
+  </g>
+  <!-- Hill 689 contours + perimeter -->
+  <g fill="none" stroke="var(--contour)" stroke-width="1">
+    <ellipse cx="692" cy="213" rx="150" ry="105" opacity="0.7"/>
+    <ellipse cx="692" cy="213" rx="105" ry="72" opacity="0.85"/>
+    <ellipse cx="692" cy="213" rx="62" ry="42"/>
+  </g>
+  <ellipse cx="692" cy="213" rx="46" ry="30" fill="none" stroke="var(--canopy)" stroke-width="2.4" stroke-dasharray="7 5"/>
+  <text x="640" y="150" font-family="'Courier New',monospace" font-size="13.5" font-weight="bold" fill="var(--marine-deep)">HILL 689</text>
+  <text x="614" y="166" font-family="'Courier New',monospace" font-size="10.5" fill="var(--marine-deep)">1/9 perimeter · CP · ops center</text>
+  <text x="662" y="262" font-family="'Courier New',monospace" font-size="10" fill="var(--muted)">XD 803 409</text>
+  <!-- Battle ridge contours (N-S) -->
+  <g fill="none" stroke="var(--contour)" stroke-width="1">
+    <ellipse cx="400" cy="505" rx="86" ry="160" opacity="0.7"/>
+    <ellipse cx="400" cy="505" rx="58" ry="118" opacity="0.85"/>
+    <ellipse cx="400" cy="505" rx="32" ry="76"/>
+  </g>
+  <text x="255" y="345" font-family="'Courier New',monospace" font-size="13.5" font-weight="bold" fill="var(--clay)">&ldquo;HILL 600&rdquo;</text>
+  <text x="228" y="361" font-family="'Courier New',monospace" font-size="10.5" fill="var(--clay)">Dead Man&rsquo;s Hill · elephant grass</text>
+  <text x="330" y="690" font-family="'Courier New',monospace" font-size="10" fill="var(--clay)">≈ XD 792 398 (derived)</text>
+  <!-- B-52 craters -->
+  <g fill="none" stroke="var(--gray)" stroke-width="1" opacity="0.8">
+    <circle cx="472" cy="470" r="7"/><circle cx="488" cy="520" r="6"/><circle cx="462" cy="565" r="7"/>
+  </g>
+  <text x="500" y="500" font-family="'Courier New',monospace" font-size="9.5" fill="var(--gray)">B-52 craters</text>
+
+  <!-- ===== PHASE 1 : patrol & ambush ===== -->
+  <g id="ph1" class="layer">
+    <path d="M 692 213 C 620 250, 540 300, 480 355 C 458 376, 444 392, 434 406" fill="none" stroke="var(--sky)" stroke-width="2.6" stroke-dasharray="10 6" marker-end="url(#ah-navy)"/>
+    <text x="540" y="298" font-family="'Courier New',monospace" font-size="11.5" fill="var(--sky)">0700 · A/1/9 patrol (Capt Banks)</text>
+    <!-- NVA horseshoe bunker complex -->
+    <path d="M 352 470 C 348 420, 380 392, 402 392 C 428 392, 452 418, 450 462 C 449 486, 442 505, 432 518" fill="none" stroke="var(--clay)" stroke-width="3" stroke-dasharray="4 4"/>
+    <text x="188" y="470" font-family="'Courier New',monospace" font-size="10.5" fill="var(--clay)">NVA bunkers, reverse slope</text>
+    <text x="188" y="484" font-family="'Courier New',monospace" font-size="10.5" fill="var(--clay)">elms, 66th Regt · 304th Div</text>
+    <!-- ambush burst -->
+    <g transform="translate(424,428)" fill="var(--clay)">
+      <path d="M 0 -14 L 4 -4 L 14 -6 L 6 2 L 12 12 L 1 7 L -6 15 L -5 4 L -15 2 L -5 -4 Z"/>
+    </g>
+    <text x="446" y="418" font-family="'Courier New',monospace" font-size="11" fill="var(--clay)">~1000 ambush</text>
+    <!-- A pinned -->
+    <g transform="translate(400,382)">
+      <rect x="-17" y="-11" width="34" height="22" fill="var(--paper)" stroke="var(--sky)" stroke-width="2"/>
+      <line x1="-17" y1="-11" x2="17" y2="11" stroke="var(--sky)" stroke-width="1.6"/>
+      <line x1="-17" y1="11" x2="17" y2="-11" stroke="var(--sky)" stroke-width="1.6"/>
+      <text x="-14" y="26" font-family="'Courier New',monospace" font-size="10.5" fill="var(--sky)">A/1/9</text>
+      <text x="-46" y="-18" font-family="'Courier New',monospace" font-size="10" fill="var(--sky)">pinned, north end</text>
+    </g>
+  </g>
+
+  <!-- ===== PHASE 2 : relief attack ===== -->
+  <g id="ph2" class="layer">
+    <!-- Charlie route: SW then hook, attack from the south -->
+    <path d="M 692 226 C 630 300, 570 380, 535 460 C 512 512, 492 570, 465 618 C 452 640, 436 650, 420 648" fill="none" stroke="var(--canopy)" stroke-width="3"/>
+    <path d="M 414 645 C 404 636, 400 620, 401 596" fill="none" stroke="var(--canopy)" stroke-width="3.6" marker-end="url(#ah-olive)"/>
+    <text x="556" y="430" font-family="'Courier New',monospace" font-size="11.5" font-weight="bold" fill="var(--marine-deep)">1320 · C/1/9 — Capt HIMMER</text>
+    <text x="556" y="444" font-family="'Courier New',monospace" font-size="10.5" fill="var(--marine-deep)">2 platoons · LtCol Cahill along</text>
+    <text x="418" y="672" font-family="'Courier New',monospace" font-size="11" font-weight="bold" fill="var(--marine-deep)">~1430 attack from the south</text>
+    <g transform="translate(508,600)">
+      <rect x="-17" y="-11" width="34" height="22" fill="var(--paper)" stroke="var(--canopy)" stroke-width="2"/>
+      <line x1="-17" y1="-11" x2="17" y2="11" stroke="var(--canopy)" stroke-width="1.6"/>
+      <line x1="-17" y1="11" x2="17" y2="-11" stroke="var(--canopy)" stroke-width="1.6"/>
+      <text x="-14" y="26" font-family="'Courier New',monospace" font-size="10.5" fill="var(--marine-deep)">C/1/9</text>
+    </g>
+    <!-- Delta from NW -->
+    <path d="M 150 302 C 210 336, 268 372, 318 412" fill="none" stroke="var(--canopy)" stroke-width="2.6" stroke-dasharray="10 6" marker-end="url(#ah-olive)"/>
+    <text x="96" y="286" font-family="'Courier New',monospace" font-size="11.5" fill="var(--marine-deep)">D/1/9 from NW</text>
+    <text x="96" y="300" font-family="'Courier New',monospace" font-size="10" fill="var(--muted)">route approximate</text>
+    <!-- LZ -->
+    <g transform="translate(478,610)" stroke="var(--sky)" stroke-width="2.4">
+      <line x1="-8" y1="0" x2="8" y2="0"/><line x1="0" y1="-8" x2="0" y2="8"/>
+    </g>
+    <text x="492" y="624" font-family="'Courier New',monospace" font-size="9.5" fill="var(--sky)">medevac LZ †</text>
+  </g>
+
+  <!-- ===== PHASE 3 : withdrawal ===== -->
+  <g id="ph3" class="layer">
+    <path d="M 432 470 C 510 420, 590 350, 654 268" fill="none" stroke="var(--gray)" stroke-width="2.4" stroke-dasharray="2 6" marker-end="url(#ah-gray)"/>
+    <path d="M 452 560 C 540 510, 616 420, 668 300" fill="none" stroke="var(--gray)" stroke-width="2.4" stroke-dasharray="2 6" marker-end="url(#ah-gray)"/>
+    <text x="600" y="332" font-family="'Courier New',monospace" font-size="11.5" fill="var(--gray)">1745 → early 17 Apr</text>
+    <text x="600" y="346" font-family="'Courier New',monospace" font-size="10.5" fill="var(--gray)">withdrawal to Hill 689 with wounded;</text>
+    <text x="600" y="360" font-family="'Courier New',monospace" font-size="10.5" fill="var(--clay)">the dead remain on the hill</text>
+  </g>
+
+  <!-- north arrow -->
+  <g transform="translate(950,70)">
+    <line x1="0" y1="22" x2="0" y2="-16" stroke="var(--ink)" stroke-width="1.6"/>
+    <path d="M 0 -22 L -6 -8 L 6 -8 Z" fill="var(--ink)"/>
+    <text x="-5" y="40" font-family="'Courier New',monospace" font-size="12" fill="var(--ink)">N</text>
+  </g>
+  <!-- scale : 1 km = 260.4 px -->
+  <g transform="translate(700,668)">
+    <line x1="0" y1="0" x2="260" y2="0" stroke="var(--ink)" stroke-width="2"/>
+    <line x1="0" y1="-5" x2="0" y2="5" stroke="var(--ink)" stroke-width="2"/>
+    <line x1="130" y1="-4" x2="130" y2="4" stroke="var(--ink)" stroke-width="1.4"/>
+    <line x1="260" y1="-5" x2="260" y2="5" stroke="var(--ink)" stroke-width="2"/>
+    <text x="-3" y="18" font-family="'Courier New',monospace" font-size="10.5" fill="var(--ink)">0</text>
+    <text x="120" y="18" font-family="'Courier New',monospace" font-size="10.5" fill="var(--ink)">500 m</text>
+    <text x="240" y="18" font-family="'Courier New',monospace" font-size="10.5" fill="var(--ink)">1 km</text>
+  </g>
+</svg>
+<figcaption>THE FIGHT OF 16–17 APRIL 1968 · Same scale conventions and grid as the overview (1&nbsp;km squares). Unit routes are schematic interpretations of the documented sequence; Delta&rsquo;s start point and the LZ (†) are approximate; the battle hill&rsquo;s grid is derived. Sources <a href="#ref-1">[1]</a> <a href="#ref-2">[2]</a> <a href="#ref-3">[3]</a>.</figcaption>
+</figure>
+
+<div class="journal">
+  <div class="head">Daily journal · reconstructed · 16–17 April 1968</div>
+  <div class="entry"><time>AM</time><p>Army air cavalry sights elements of the NVA 66th Regiment, 304th Division, back in the hills near Route 9 and Lang Vei. The report is never passed to Marine commanders.<sup class="ref"><a href="#ref-3">[3]</a></sup></p></div>
+  <div class="entry"><time>0700</time><p>Capt Henry D. Banks leads two reinforced platoons of Company A southwest off the Hill 689 perimeter.<sup class="ref"><a href="#ref-2">[2]</a></sup></p></div>
+  <div class="entry"><time>1000</time><p>Company A halts; two squads push onto a ridge in four-to-six-foot elephant grass and take small-arms and mortar fire from concealed bunkers. The first Marines fall.<sup class="ref"><a href="#ref-2">[2]</a></sup></p></div>
+  <div class="entry"><time>~1030</time><p>1stLt Michael P. Hayden&rsquo;s 2d Platoon assaults; Hayden and then his platoon sergeant are killed in rapid succession. Alpha is pinned on the north end of the ridge — 10 dead, 20 wounded. Banks twice declines offered help, believing he faces a squad.<sup class="ref"><a href="#ref-2">[2]</a></sup></p></div>
+  <div class="entry"><time>~1200</time><p>Banks reverses and asks for relief.<sup class="ref"><a href="#ref-2">[2]</a></sup></p></div>
+  <div class="entry"><time>1320</time><p>LtCol Cahill commits Companies C and D. (His message doesn&rsquo;t reach the regimental commander, Col Meyers, until 1543 — the radio-relay fog of that day.)<sup class="ref"><a href="#ref-2">[2]</a></sup></p></div>
+  <div class="entry"><time>~1400</time><p>Two platoons of Company C move out first — Capt Himmer leading, Cahill accompanying — and climb roughly 1,800 feet of the hill&rsquo;s height toward the fight.<sup class="ref"><a href="#ref-2">[2]</a></sup><sup class="ref"><a href="#ref-3">[3]</a></sup></p></div>
+  <div class="entry"><time>~1430</time><p>Finding Alpha immobile on the north end, Cahill &ldquo;ordered Himmer to attack from the south&rdquo; — the veteran account has Charlie moving onto the eastern-southeastern ridge — while Delta presses from the northwest.<sup class="ref"><a href="#ref-2">[2]</a></sup><sup class="ref"><a href="#ref-3">[3]</a></sup></p></div>
+  <div class="entry"><time>PM</time><p>The relief attack bogs down in crossfire from bunkers, spider holes, and B-52 craters. Alpha&rsquo;s dead and wounded are withdrawn. Somewhere on this southern approach, <b>Captain Lawrence Himmer is killed leading his company</b>. One of his Marines, PFC David Dee Brown Jr — four days in country — falls on the southern side of the hill.<sup class="ref"><a href="#ref-3">[3]</a></sup><sup class="ref"><a href="#ref-13">[13]</a></sup></p></div>
+  <div class="entry"><time>1745</time><p>Cahill orders every man off the hill with the wounded. The dead stay behind — &ldquo;We will get them later.&rdquo;<sup class="ref"><a href="#ref-3">[3]</a></sup></p></div>
+  <div class="entry"><time>night–0400</time><p>Entangled with the NVA in the dark, the companies work free and fall back northeast to Hill 689, completing the withdrawal in the early morning of 17 April.<sup class="ref"><a href="#ref-1">[1]</a></sup><sup class="ref"><a href="#ref-7">[7]</a></sup></p></div>
+</div>
+
+<!-- ================= V. THE COST ================= -->
+<p class="eyebrow">Sheet V · The Cost</p>
+<h2 class="disp">Thirty-eight Marines, three corpsmen</h2>
+<div class="ledger">
+  <div class="row"><span>Killed in action, 16–17 April</span><b>38 USMC + 3 USN</b></div>
+  <div class="row"><span>Missing</span><b>3</b></div>
+  <div class="row"><span>Wounded</span><b>32</b></div>
+  <div class="row"><span>Recovery sweep by 2/3 Marines, four days later — the dead brought home</span><b>+6 KIA · 86 WIA</b></div>
+  <div class="row"><span>July 1968: 1/1 Marines recover earlier dead at Hill 689 during the base evacuation</span><b>+11 KIA</b></div>
+</div>
+<p style="font-size:13.5px;color:var(--muted);">Official-history figures.<sup class="ref"><a href="#ref-1">[1]</a></sup><sup class="ref"><a href="#ref-7">[7]</a></sup> A veterans&rsquo; memorial page gives differing tallies for 16–19 April (9 KIA / 46 WIA / 36 MIA), likely reflecting confused initial field reporting; the official figures are treated as authoritative.<sup class="ref"><a href="#ref-8">[8]</a></sup></p>
+<p>Roughly one man in five who went up those slopes became a casualty in a single afternoon — among the worst days any Marine battalion endured in 1968. The battalion commander, LtCol John &ldquo;Blackie&rdquo; Cahill, was relieved of duty afterward; the roster shows his command passing to LtCol James W. Quinn on 13 May.<sup class="ref"><a href="#ref-1">[1]</a></sup><sup class="ref"><a href="#ref-7">[7]</a></sup> The official history states no reason. The record cuts both ways: he declined offered reinforcements and fed companies into a fortified position — yet the intelligence that would have changed everything was withheld above his level, and his caution about recovering the dead was echoed days later by regiment and division, who themselves suspended rescue attempts as too costly.<sup class="ref"><a href="#ref-2">[2]</a></sup><sup class="ref"><a href="#ref-3">[3]</a></sup> Cahill — Chosin Reservoir veteran, Silver Star, four Purple Hearts — retired a colonel and died in 2005.<sup class="ref"><a href="#ref-9">[9]</a></sup></p>
+
+<!-- ================= VI. COMING HOME ================= -->
+<p class="eyebrow">Sheet VI · Coming Home</p>
+<h2 class="disp">Fort Rosecrans, Point Loma</h2>
+<p>Captain Himmer was brought home to San Diego and buried at Fort Rosecrans National Cemetery, Plot Q 1222, above the water at Point Loma — a few miles from Chula Vista.<sup class="ref"><a href="#ref-14">[14]</a></sup> His decorations include the Purple Heart, Combat Action Ribbon, Good Conduct Medal, National Defense Service Medal, Vietnam Service Medal, and Vietnam Campaign Medal.<sup class="ref"><a href="#ref-5">[5]</a></sup> His name is cut into Panel 50E, Line 14 of the Vietnam Veterans Memorial, among the men of the 16th of April.<sup class="ref"><a href="#ref-4">[4]</a></sup></p>
+<p>Six weeks after he fell, Jennifer was born. Fifty-two years after that, a Marine who had been on the hill found his page on the Wall of Faces and left eleven words about the Skipper. His company remembered him. His family still does.</p>
+
+<!-- ================= SOURCES ================= -->
+<p class="eyebrow">Sources</p>
+<h2 class="disp">References</h2>
+<ol class="sources">
+  <li id="ref-1">Shulimson, Blasiol, Smith &amp; Dawson, <i>U.S. Marines in Vietnam: The Defining Year, 1968</i> (USMC History &amp; Museums Division, 1997), pp. 312–316 (the &ldquo;Walking Dead&rdquo; / Scotland II sections) and p. 715 (command roster). <a href="http://www.hqco9thmarines.com/History/US_Marines_In_Vietnam_The_Defining_Year_1968.pdf">Full PDF</a> · <a href="https://archive.org/details/USMarinesInVietnamTheDefiningYear1968">Internet Archive</a></li>
+  <li id="ref-2">The same volume, p. 313 read verbatim (incl. footnoted post-war comments by Col Bruce F. Meyers): <a href="https://ehistory.osu.edu/books/1968/0313">eHistory, Ohio State — p. 313</a> (pp. 314–316 adjacent).</li>
+  <li id="ref-3">John McGuire, &ldquo;Rescuing the Walking Dead,&rdquo; <i>Vietnam</i> magazine (Feb 2020), via <a href="https://www.historynet.com/">HistoryNet</a> — first-person account of Cpl Tommy &ldquo;Hatch&rdquo; Hatcher, 1st Plt, C/1/9; the &ldquo;Hill 600&rdquo; designation, the intelligence failure, and Cahill&rsquo;s withdrawal order.</li>
+  <li id="ref-4">Vietnam Veterans Memorial Fund, Wall of Faces — <a href="https://www.vvmf.org/Wall-of-Faces/23298/LAWRENCE-HIMMER/">Lawrence Himmer, profile 23298</a> (service data, photos, family and veteran remembrances).</li>
+  <li id="ref-5">The Virtual Wall — <a href="https://www.virtualwall.org/dh/HimmerLx01a.htm">Capt Lawrence Himmer</a> (unit, decorations; generated from the Coffelt Database).</li>
+  <li id="ref-6">HonorStates.org — <a href="https://www.honorstates.org/index.php?id=278291">Lawrence Himmer, record 278291</a>.</li>
+  <li id="ref-7">Wikipedia, &ldquo;<a href="https://en.wikipedia.org/wiki/Operation_Scotland_II">Operation Scotland II</a>&rdquo; (summarizing Shulimson pp. 313–316; operation dates and casualty totals).</li>
+  <li id="ref-8">Ray Smith, <a href="http://www.rjsmith.com/info_pages/hill-689-info.html">&ldquo;Hill 689&rdquo;</a> (grid XD 803-409; unofficial casualty tallies) and <a href="http://www.rjsmith.com/topo_map.html">Ray&rsquo;s Map Room</a>.</li>
+  <li id="ref-9">San Diego Union-Tribune obituary, Col John J. H. &ldquo;Blackie&rdquo; Cahill (d. 14 July 2005), via <a href="https://www.legacy.com/obituaries/name/john-cahill-obituary?pid=14599853">Legacy.com</a>.</li>
+  <li id="ref-10">Military Wiki, &ldquo;<a href="https://military-history.fandom.com/wiki/Operation_Scotland_II">Operation Scotland II</a>&rdquo; (Hill 689 coordinates 16°38′35″N 106°41′20″E).</li>
+  <li id="ref-11">U.S. Army Map Service 1:50,000 Sheet 6342-III &ldquo;Huong Hoa&rdquo; — <a href="https://maps.lib.utexas.edu/maps/topo/vietnam/">UT Perry-Castañeda Vietnam topographic collection</a> (the sheet the Marines used; grid keyed on both maps above).</li>
+  <li id="ref-12">1st Bn 9th Marines Command Chronology, April 1968 — Texas Tech Vietnam Center &amp; Sam Johnson Vietnam Archive, <a href="https://www.vietnam.ttu.edu/virtualarchive/items.php?item=1201056016">document 1201056016</a> (primary daily journal; grids and command roster).</li>
+  <li id="ref-13">University of Denver, &ldquo;More Than A Headstone&rdquo; — profile of PFC David Dee Brown Jr., C/1/9 (killed 16 Apr 1968, southern side of the hill).</li>
+  <li id="ref-14">Fort Rosecrans National Cemetery interment record, Plot Q 1222; <a href="https://www.findagrave.com/memorial/3406664">Find A Grave memorial 3406664</a>.</li>
+  <li id="ref-15">Military.com, feature on 1/9 &ldquo;The Walking Dead&rdquo; (24 Oct 2025) and battalion unit history (747 of 2,892 killed — 25.89%).</li>
+</ol>
+
+<!-- ================= RELIABILITY ================= -->
+<div class="notes">
+  <h3>Reliability notes</h3>
+  <p><b>Sourced</b> facts above trace to the official history, the memorial databases, or period records. <b>Derived</b>: the battle hill&rsquo;s position (≈ XD 792 398) is plotted one mile southwest of Hill 689 per the veteran account — not read from a period grid; the real 6342-III sheet would refine it. <b>Approximate</b>: Hill 552, the Rock Quarry, Khe Sanh village, Delta&rsquo;s start point, and the medevac LZ are placed from narrative relationships. Unit routes are schematic — faithful to the documented sequence and directions, not to a surveyed trace. The name &ldquo;Hill 600&rdquo; is the Marines&rsquo; field designation; the official history leaves the ridge unnumbered. Casualty figures vary between sources as flagged in Sheet V. Larry&rsquo;s role as C Company&rsquo;s commanding officer rests on the official history&rsquo;s account of Cahill&rsquo;s order to him, his rank, and a Charlie Company veteran&rsquo;s &ldquo;Skipper&rdquo; remembrance; the April 1968 command chronology&rsquo;s staff roster would confirm it beyond doubt.</p>
+</div>
+
+<footer class="foot">
+  <p class="smallcaps disp">For the family record</p>
+  <p>The two documents that will deepen this sheet: Larry&rsquo;s <b>Official Military Personnel File</b> (request as next-of-kin from the National Personnel Records Center, St.&nbsp;Louis, via Standard Form 180 — Marine records survived the 1973 fire) and the <b>1/9 Command Chronology for April 1968</b> (Texas Tech document 1201056016), which holds the daily journal, exact grids, and the officer roster for the day he died.</p>
+</footer>
+
+</div>
+<script>
+(function(){
+  var buttons=document.querySelectorAll('.phases button');
+  var layers={ph1:document.getElementById('ph1'),ph2:document.getElementById('ph2'),ph3:document.getElementById('ph3')};
+  function setPhase(p){
+    Object.keys(layers).forEach(function(k){
+      if(p==='all'||p===k){layers[k].classList.remove('dim');}
+      else{layers[k].classList.add('dim');}
+    });
+    buttons.forEach(function(b){b.setAttribute('aria-pressed',String(b.dataset.phase===p));});
+  }
+  buttons.forEach(function(b){
+    b.addEventListener('click',function(){setPhase(b.dataset.phase);});
+  });
+})();
+</script>
+</body>
+</html>

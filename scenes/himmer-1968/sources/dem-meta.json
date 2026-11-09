@@ -1,0 +1,203 @@
+{
+ "source": "Copernicus GLO-30 DEM (COG tile N16_00_E106_00)",
+ "url": "https://copernicus-dem-30m.s3.amazonaws.com/Copernicus_DSM_COG_10_N16_00_E106_00_DEM/Copernicus_DSM_COG_10_N16_00_E106_00_DEM.tif",
+ "crs": "EPSG:4326 (heights: EGM2008 orthometric, metres)",
+ "native_res_deg": 0.0002777777777777778,
+ "bounds": {
+  "west": 106.6,
+  "east": 106.79972222222223,
+  "south": 16.55027777777778,
+  "north": 16.719722222222224
+ },
+ "width": 720,
+ "height": 611,
+ "pixel_convention": "pixel centres; col0 centre = west bound, row0 centre = north bound; row increases southward",
+ "metres_per_px_x": 29.63,
+ "metres_per_px_y": 30.71,
+ "min_m": 28.0,
+ "max_m": 1003.403076171875,
+ "heightmap_png": "dem-16bit.png",
+ "png_encoding": "height_m = min_m + v/65535*(max_m-min_m)",
+ "json_grid": "dem-grid.json (int16 metres, row-major, north row first)",
+ "features": {
+  "hill689": {
+   "lat": 16.643055555555556,
+   "lon": 106.6888888888889,
+   "px_x": 320.0,
+   "px_y": 276.0,
+   "dem_m_at_point": 545.8,
+   "local_max_150m": {
+    "m": 585.8107299804688,
+    "px": [
+     317,
+     277
+    ],
+    "offset_m": 95
+   },
+   "local_max_500m": {
+    "m": 690.6201171875,
+    "px": [
+     313,
+     262
+    ],
+    "offset_m": 470
+   },
+   "published_height_m": 689
+  },
+  "hill600": {
+   "lat": 16.63277777777778,
+   "lon": 106.67833333333334,
+   "px_x": 282.0,
+   "px_y": 313.0,
+   "dem_m_at_point": 514.9,
+   "local_max_150m": {
+    "m": 562.7408447265625,
+    "px": [
+     280,
+     309
+    ],
+    "offset_m": 134
+   },
+   "local_max_500m": {
+    "m": 610.1063842773438,
+    "px": [
+     284,
+     299
+    ],
+    "offset_m": 424
+   },
+   "published_height_m": 600
+  },
+  "khe_sanh_base": {
+   "lat": 16.654166666666665,
+   "lon": 106.72416666666666,
+   "px_x": 447.0,
+   "px_y": 236.0,
+   "dem_m_at_point": 498.8,
+   "local_max_150m": {
+    "m": 506.6585693359375,
+    "px": [
+     442,
+     236
+    ],
+    "offset_m": 150
+   },
+   "local_max_500m": {
+    "m": 520.1284790039062,
+    "px": [
+     431,
+     236
+    ],
+    "offset_m": 480
+   }
+  }
+ },
+ "dem_summits_near_features": {
+  "summit_matching_hill689": {
+   "dem_m": 691.0,
+   "px": [
+    313,
+    262
+   ],
+   "lat": 16.64694,
+   "lon": 106.68694,
+   "offset_from_stated_689_point_m": 477,
+   "note": "Stated Hill 689 coordinate (16-38-35N 106-41-20E) falls on a flank (546 m); the real 689 m summit is ~480 m NNW. Use this for the diorama."
+  },
+  "summit_matching_hill600": {
+   "dem_m": 610.0,
+   "px": [
+    284,
+    298.5
+   ],
+   "lat": 16.6368,
+   "lon": 106.67889,
+   "distance_from_dem_689_summit_km": 1.4,
+   "bearing_from_689": "SW (approx 218 deg)",
+   "note": "Only 600-ish summit near the derived position; 610 m in DEM vs ~600 m map designation."
+  },
+  "other_summits": [
+   {
+    "dem_m": 595,
+    "px": [
+     265,
+     274
+    ],
+    "lat": 16.64361,
+    "lon": 106.67361
+   },
+   {
+    "dem_m": 532,
+    "px": [
+     333,
+     316.5
+    ],
+    "lat": 16.6318,
+    "lon": 106.6925
+   },
+   {
+    "dem_m": 559,
+    "px": [
+     382,
+     241
+    ],
+    "lat": 16.65278,
+    "lon": 106.70611
+   },
+   {
+    "dem_m": 758,
+    "px": [
+     247,
+     216
+    ],
+    "lat": 16.65972,
+    "lon": 106.66861
+   }
+  ]
+ },
+ "features_from_map_grid_via_Indian1960_to_WGS84": {
+  "method": "MGRS 48Q XD E=680300 N=1840900 etc. on Indian 1960 (Everest, TM CM105 k0.9996, datum ING-A as in the 6342-III GeoPDF), shifted to WGS84 with dX,dY,dZ=198,881,317. Accuracy ~ +-50 m.",
+  "points": {
+   "hill689": {
+    "grid": "XD 803 409",
+    "lat": 16.64663,
+    "lon": 106.68659,
+    "px_x": 311.7,
+    "px_y": 263.1,
+    "dem_m": 685.1
+   },
+   "hill600": {
+    "grid": "XD 792 398 (derived)",
+    "lat": 16.63678,
+    "lon": 106.67619,
+    "px_x": 274.3,
+    "px_y": 298.6,
+    "dem_m": 539.0
+   },
+   "khe_sanh_base": {
+    "grid": "XD 841 421",
+    "lat": 16.65718,
+    "lon": 106.7223,
+    "px_x": 440.3,
+    "px_y": 225.1,
+    "dem_m": 507.3
+   }
+  },
+  "note": "Prefer these pixel positions for the diorama. The memorial-sheet lat/lon for Hill 689 (16-38-35N 106-41-20E) is ~480 m SSE of the real summit; the grid reference is right."
+ },
+ "preferred_pixel_positions": {
+  "hill689": [
+   313,
+   262
+  ],
+  "hill600": [
+   284,
+   298.5
+  ],
+  "khe_sanh_base": [
+   440.3,
+   225.1
+  ]
+ },
+ "preferred_pixel_positions_note": "hill689 and hill600 = DEM summits that match the 689/610 m peaks; base = grid-derived airstrip position."
+}
