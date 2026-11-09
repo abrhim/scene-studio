@@ -810,7 +810,9 @@
     // Panykaninec in chapters 8-10: lying at the rim of Hunnicutt's crater where he was hit, breathing
     function panyPlan(L) {
       const rim = [hunC[0] - up.x * 7.2, hunC[1] - up.z * 7.2];
-      const pl = new Plan(rim, yawTo(rim[0], rim[1], S.battleSummit.x, S.battleSummit.z)).hold(L, 'Laying Breathless', { lie: true, down: true }).end(L);
+      // placed lying (a new chapter, not his fall): head uphill (clay-v3/motion.js CM.uphillYaw), else toward the summit
+      const yU = CM.uphillYaw ? CM.uphillYaw(ground, rim[0], rim[1], headYaw) : null;
+      const pl = new Plan(rim, yU !== null ? yU : yawTo(rim[0], rim[1], S.battleSummit.x, S.battleSummit.z)).hold(L, 'Laying Breathless', { lie: true, down: true }).end(L);
       pl.seam = false; return pl;
     }
     function ch8Plans() {
@@ -1045,9 +1047,9 @@
       else {
         if (!o.rifleG) {
           const a = f.yaw + 1.1, px = f.x + Math.sin(f.yaw - 1.2) * 0.55, pz = f.z + Math.cos(f.yaw - 1.2) * 0.55;
-          _bx.set(Math.sin(a), 0, Math.cos(a)); _by.crossVectors(_bz, _bx);
-          const q = new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(_bx, _by, _bz));
-          o.rifleG = { p: new THREE.Vector3(px, ground(px, pz) + 0.03 * f.scale, pz), q };
+          // on its side on the slope (clay-v3/motion.js CM.groundRest), not flat in the air over a downhill side
+          const q = new THREE.Quaternion(), pp = CM.groundRest(f, _p.set(px, 0, pz), _bx.set(Math.sin(a), 0, Math.cos(a)), true, new THREE.Vector3(), q);
+          o.rifleG = { p: pp, q };
         }
         if (f.drop && !f.drop.patched) { f.drop.p1.copy(o.rifleG.p); f.drop.q1.copy(o.rifleG.q); f.drop.patched = true; }
         if (seg.clip === 'Dying (1)' && !seg.still) return;   // the fall lets go and settles it there itself; once he is still it stays where it settled
@@ -1205,12 +1207,13 @@
           CM.update(f, o.fresh ? 1 / 60 : Math.min(0.1, o.acc), t);
           o.acc = 0; o.fresh = false;
           gestures(o, p, seg, t);
+          CM.settle(f);   // the rifle rides with the chest the glance or flinch turned
           const down = seg.down || seg.carried || (seg.prev && seg.prev.clip === 'Dying (1)') || seg.clip === 'Dying (1)';
           if (down) rifleGround(o, seg);
           if (E.lift) { F.root.position.y += E.lift; F.root.updateMatrixWorld(true); }
           if (o.c.kind === 'radioman') { const r = CM.radioPoints(f); if (r) { o.ant.copy(r.antennaTip); o.antOk = true; } }
         } else {
-          F.root.position.set(f.x, f.ground(f.x, f.z) + (f.lift || 0) + (E.lift || 0), f.z); F.root.rotation.y = f.yaw;
+          CM.place(f, E.lift || 0);   // tilted to the slope as the last update left him (clay-v3/motion.js ground layer)
         }
         f.b.mixamorigHead.getWorldPosition(o.head);
         o.blob.set(f.x, gy(f.x, f.z), f.z, seg.lie ? 1.7 : E.lift ? 0.6 : 1);

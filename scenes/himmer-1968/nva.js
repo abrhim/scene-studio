@@ -149,7 +149,7 @@
         ctx.scene.add(F.root);
         const f = CM.figure(F, { seed, x: 0, z: -9999, yaw: 0, vary: true, mood: 'alert', ground: G });
         F.root.rotation.order = 'YXZ';
-        f.o.pinned = true;
+        f.o.pinned = true; f.o.noGround = true;   // placed by hand: by the head in slits and holes, the file pitched itself (clay-v3/motion.js ground layer off)
         for (const n of CLIPS) { const a = (f.acts[n] = f.mixer.clipAction(CM.clips[n])); a.setLoop(THREE.LoopRepeat); a.play(); a.timeScale = 0; a._once = false; a._held = true; a.setEffectiveWeight(0); }
         f.cur = CLIPS[0];
         f.nva = { sink: 0, pitch: 0, wasOn: false, blob: null, head: new THREE.Vector3(), aim: new THREE.Vector3(0, 0, 1), aimK: 0, useHead: false };

@@ -38,26 +38,27 @@
     'Rifle Crouch Walk': { mode: 'plant', rifle: 'two', load: 0.4, knee: 0 },
     'Injured Walk': { mode: 'plant', rifle: 'sling', load: 0.6, knee: 0 },
     'Rifle Idle': { mode: 'still', rifle: 'two', load: 1, knee: 1 },
-    'Rifle Kneel Idle': { mode: 'still', rifle: 'two', load: 0.5, knee: 0 },
-    'Idle Crouching': { mode: 'still', rifle: 'two', load: 0.4, knee: 0 },
-    'Rifle Idle To Crouch': { mode: 'once', rifle: 'two', load: 0.5, knee: 0 },
+    'Rifle Kneel Idle': { mode: 'still', rifle: 'two', load: 0.5, knee: 0, pose: 'kneel' },
+    'Idle Crouching': { mode: 'still', rifle: 'two', load: 0.4, knee: 0, pose: 'kneel' },
+    'Rifle Idle To Crouch': { mode: 'once', rifle: 'two', load: 0.5, knee: 0, pose: 'kneel' },
     'Rifle Run To Stop': { mode: 'once', rifle: 'two', load: 0.6, knee: 0 },
     'Prone Idle': { mode: 'still', rifle: 'two', load: 0, knee: 0 },
     'Prone Forward': { mode: 'drift', rifle: 'two', load: 0, knee: 0 },
-    'Low Crawl': { mode: 'still', rifle: 'sling', load: 0, knee: 0 },
+    'Low Crawl': { mode: 'still', rifle: 'sling', load: 0, knee: 0, back: true },
     'Dying': { mode: 'once', rifle: 'carry', drop: 1.5, load: 0, knee: 0 },
     'Dying (1)': { mode: 'once', rifle: 'carry', drop: 1.6, load: 0, knee: 0 },
     'Dying (2)': { mode: 'once', rifle: 'carry', drop: 1.3, load: 0, knee: 0 },
     'Getting Up': { mode: 'once', rifle: 'sling', load: 0, knee: 0 },
     'Stand Up': { mode: 'once', rifle: 'sling', load: 0, knee: 0 },
-    'Kneeling Down': { mode: 'once', rifle: 'carry', load: 0.3, knee: 0 },
+    'Kneeling Down': { mode: 'once', rifle: 'carry', load: 0.3, knee: 0, pose: 'kneel' },
     'Lying Down': { mode: 'once', rifle: 'sling', load: 0, knee: 0 },
     'Being Carried': { mode: 'once', rifle: 'sling', load: 0, knee: 0 },
     'Laying Breathless': { mode: 'still', rifle: 'sling', load: 0, knee: 0 },
-    'Sitting Idle': { mode: 'still', rifle: 'sling', load: 0, knee: 0 },
+    'Sitting Idle': { mode: 'still', rifle: 'sling', load: 0, knee: 0, pose: 'sit' },
     'Throw Grenade': { mode: 'still', rifle: 'sling', load: 0, knee: 0 },
     'Grenade Throw': { mode: 'still', rifle: 'sling', load: 0.3, knee: 0 },
-    'Crouch Idle 02 Looking Around': { mode: 'still', rifle: 'sling', load: 0.3, knee: 0 },
+    'Crouch Idle 02 Looking Around': { mode: 'still', rifle: 'sling', load: 0.3, knee: 0, pose: 'kneel' },
+    'Kneeling Pointing': { mode: 'still', rifle: 'sling', load: 1, knee: 0.5, pose: 'kneel' },
   };
   const DEFAULT_CFG = { mode: 'still', rifle: 'sling', load: 1, knee: 0.5 };
   CM.cfg = (name) => CFG[name] || DEFAULT_CFG;
@@ -355,21 +356,30 @@
   // the bones the layers edit (all of the Mixamo tree): put back to the clip's last values before the mixer runs
   function restoreClip(f) { for (let i = 0; i < f.mixBones.length; i++) f.mixBones[i].quaternion.copy(f.clipQ[i]); f.b[MB('Hips')].position.copy(f.clipP); }
   function storeClip(f) { for (let i = 0; i < f.mixBones.length; i++) f.clipQ[i].copy(f.mixBones[i].quaternion); f.clipP.copy(f.b[MB('Hips')].position); }
+  // The actions the mixer is playing. (Read from the mixer, not from f.acts: marines-a-d drives f.mixer's actions itself,
+  // so f.acts stayed empty and every A and D man ran with no clip as far as the layers knew: rifle always slung, no
+  // load, no drop. Fix pass, ground and grip.)
+  const _acts = [];
+  function activeActs(f) {
+    const m = f.mixer, n = m._nActiveActions, all = m._actions; _acts.length = 0;
+    // (an action a plug-in scrubs, timeScale 0 with its time set each frame, counts: marines-c's moving men)
+    for (let i = 0; i < n; i++) { const a = all[i]; if (a.enabled && a.getEffectiveWeight() > 0) _acts.push(a); }
+    return _acts;
+  }
   function weights(f) {
     // summed weight by property, over the running actions
-    const w = { two: 0, plant: 0, load: 0, knee: 0, total: 0, still: 0 };
-    for (const k in f.acts) {
-      const a = f.acts[k]; if (!a.isRunning() && !(a._held && a.enabled)) continue;
-      const ew = a.getEffectiveWeight(); if (ew <= 0) continue;
+    const w = { two: 0, plant: 0, load: 0, knee: 0, total: 0, still: 0, kneel: 0, sit: 0 };
+    for (const a of activeActs(f)) {
+      const ew = a.getEffectiveWeight();
       const c = a.getClip().userData.cfg; w.total += ew;
       if (c.rifle === 'two') w.two += ew;
       if (c.mode === 'plant') w.plant += ew;
+      if (c.pose === 'kneel') w.kneel += ew; else if (c.pose === 'sit') w.sit += ew;
       w.load += ew * c.load; w.knee += ew * c.knee * c.load;
     }
-    if (w.total > 0) for (const k of ['two', 'plant', 'load', 'knee']) w[k] /= w.total;
+    if (w.total > 0) for (const k of ['two', 'plant', 'load', 'knee', 'kneel', 'sit']) w[k] /= w.total;
     return w;
   }
-  const activeActs = (f) => Object.values(f.acts).filter((a) => a.getEffectiveWeight() > 0 && (a.isRunning() || a._held));
 
   // ---------------------------------------------------------------- the per-frame stack
   const tmpA = new Float32Array(4), tmpB = new Float32Array(4);
@@ -387,11 +397,11 @@
     const Hips = b[MB('Hips')];
 
     // 7. hip sway: the residual hip motion the retarget strips from travelling loops, weighted per action
-    if (on('sway')) for (const a of activeActs(f)) { const ud = a.getClip().userData; if (!ud.sway) continue; sampleArr(ud.sway, ud, a.time % a.getClip().duration, 3, tmpA); Hips.position.x += tmpA[0] * a.getEffectiveWeight(); Hips.position.z += tmpA[2] * a.getEffectiveWeight(); }
+    if (on('sway')) for (const a of activeActs(f).slice()) { const ud = a.getClip().userData; if (!ud.sway) continue; sampleArr(ud.sway, ud, a.time % a.getClip().duration, 3, tmpA); Hips.position.x += tmpA[0] * a.getEffectiveWeight(); Hips.position.z += tmpA[2] * a.getEffectiveWeight(); }
 
     // 5. variation: stride, width and arm swing scaled about the walk's mean pose
     if (on('vary') && w.plant > 0) {
-      for (const a of activeActs(f)) {
+      for (const a of activeActs(f).slice()) {
         const ud = a.getClip().userData; if (ud.cfg.mode !== 'plant') continue;
         const ww = a.getEffectiveWeight(), M = ud.means, s = 1 + (f.v.stride - 1) * ww, arm = 1 + (f.v.arm - 1) * ww;
         for (const k of ['LeftUpLeg', 'RightUpLeg', 'LeftLeg', 'RightLeg', 'LeftFoot', 'RightFoot']) { const n = MB(k); if (M[n]) b[n].quaternion.copy(_q1.copy(M[n]).slerp(b[n].quaternion, s)); }
@@ -421,7 +431,7 @@
     }
 
     // 6. root: speed from the planted foot (plant), the clip's drift (drift), still or one-shot (none); then the ground
-    root.position.set(f.x, f.ground(f.x, f.z), f.z); root.rotation.y = f.yaw; root.updateMatrixWorld(true);
+    root.position.set(f.x, f.ground(f.x, f.z), f.z); root.rotation.set(0, f.yaw, 0); root.updateMatrixWorld(true);
     const sc = f.scale;
     const feet = ['LeftFoot', 'RightFoot', 'LeftToeBase', 'RightToeBase'].map((nm) => root.worldToLocal(wpos(b[MB(nm)], V(0, 0, 0))));
     let vx = 0;
@@ -448,6 +458,7 @@
     if (!f.o.pinned) { f.x += (Math.sin(f.yaw) * f.speed + Math.cos(f.yaw) * vx) * dt; f.z += (Math.cos(f.yaw) * f.speed - Math.sin(f.yaw) * vx) * dt; }
     // the shown root follows the planted-foot solution through a critically damped smoother: the solve steps a few
     // millimetres from frame to frame (the contact weights shift as a foot lifts), which jolted the whole body
+    if (f.sx !== undefined && Math.hypot(f.x - f.sx, f.z - f.sz) > 0.5) f.gJump = true;
     if (!CM.ROOT_W || f.sx === undefined || f.o.pinned || Math.hypot(f.x - f.sx, f.z - f.sz) > 0.5) { f.sx = f.x; f.sz = f.z; f.svx = 0; f.svz = 0; }
     else {
       const w = CM.ROOT_W, h = dt / 4;
@@ -455,17 +466,21 @@
     }
     root.position.set(f.sx, f.ground(f.sx, f.sz), f.sz);
     root.updateMatrixWorld(true);
-    // the ground: the lowest contact point (heels, toes, knees, seat, back, helmet, hands) rests on the ground
+    // the ground: a man on the ground lies, kneels or sits on the slope (ground layer); a standing man's lowest contact
+    // point rests on the ground and he leans a little into a steep slope
     if (on('root')) {
-      let lift = -Infinity;
-      for (const [nm, x, y, z, rr] of PROBES) {
-        const bone = b[MB(nm)]; _v1.set(x, y, z).applyMatrix4(bone.matrixWorld);
-        lift = Math.max(lift, f.ground(_v1.x, _v1.z) + rr * sc - _v1.y);
+      // the still dead (f.raw: a frozen pose) keep the ground pose they were given until they are moved
+      const G0 = f.gStill;
+      const same = G0 && G0.x === f.sx && G0.z === f.sz && G0.yaw === f.yaw;
+      if (f.raw && same && G0.n >= 12) { root.position.copy(G0.p); root.quaternion.copy(G0.q); root.updateMatrixWorld(true); }
+      else {
+        groundPose(f, w, dt);
+        // (after a dozen updates in one place the lift and tilt have settled)
+        if (f.raw) { const n = same ? G0.n + 1 : 0; f.gStill = G0 && same ? G0 : { x: f.sx, z: f.sz, yaw: f.yaw, p: V(0, 0, 0), q: new THREE.Quaternion() }; f.gStill.n = n; f.gStill.p.copy(root.position); f.gStill.q.copy(root.quaternion); }
+        else f.gStill = null;
       }
-      f.lift = f.lift === undefined ? lift : f.lift + (lift - f.lift) * Math.min(1, dt * 12);
-      root.position.y += f.lift; root.updateMatrixWorld(true);
       if (w.plant > 0 && !f.o.pinned) footLock(f, w.plant);
-    }
+    } else { f.gq = null; f.lieK = 0; }
 
     // 3. head and eyes, and 8. the face
     if (on('look')) look(f, dt, t);
@@ -627,11 +642,13 @@
       if (o.reachMax) { wpos(hd, G_.h); o.reachMax[s] = G_.h.distanceTo(G_.t); }
     }
     root.updateMatrixWorld(true);
+    if (o.lean || o.toward) CM.settle(f);   // the slung rifle rides on the bowed back
   };
   CM.chestLift = function (f, ang) {
     if (!ang) return;
     premul(f.b[MB('Spine')], RIGHT, -ang * 0.5); premul(f.b[MB('Spine1')], RIGHT, -ang * 0.3); premul(f.b[MB('Neck')], RIGHT, -ang * 0.2);
     f.F.root.updateMatrixWorld(true);
+    CM.settle(f);
   };
   CM.poncho = function (scene, color) {
     const NU = 6, NV = 12;   // across, along
@@ -662,6 +679,184 @@
     const b = f.b, tip = b['a' + (f.F.antN - 1)];
     return { handset: V(0, 0.08, 0.02).applyMatrix4(b.handset.matrixWorld), antennaTip: V(0, 1, 0).applyMatrix4(tip.matrixWorld), pack: V(0, -0.05, -0.26).applyMatrix4(b[MB('Spine2')].matrixWorld) };
   };
+  // ---------------------------------------------------------------- 6b. the ground layer (fix pass, ground and grip)
+  // Abram: "people don't lie down at the angle of the hill." The clips are made on flat ground, so a man lying, crawling,
+  // kneeling or sitting on the slope used to keep the clip's flat pose: uphill he floated (up to 1.2 m at the toes on
+  // the 40-degree south slope), downhill he dug in. Now:
+  // - the contacts are the probes within 4 cm of the pose's own lowest point (the pose's flat-ground footprint);
+  // - the ground under the body is fitted with a plane (least squares over the contacts and four points along and across
+  //   the body's long axis), cached while he stays put;
+  // - lying (the body's hips-to-head line under about 55 degrees from vertical: falls, the dead, prone, crawls) and
+  //   kneeling (a kneeling clip with the hips low) tilt the whole figure about the contacts' centre so the body's frame
+  //   lies in that plane (long axis along the slope, side axis across it); a kneeling man's torso is then turned back
+  //   upright from the waist, so only the knee, shin and feet follow the slope;
+  // - then the body is lifted (or lowered) so the contacts rest on the ground on average, nothing deeper than 4 cm;
+  // - sitting men keep the seat and put each foot on the slope (leg IK, the sole turned to the ground);
+  // - standing and walking men keep the planted-foot root and lean a little into a steep slope (at most 8 degrees).
+  const GP = { p: [], ly: [], ci: new Uint8Array(64), cont: [], pts: [], qT: new THREE.Quaternion(), qY: new THREE.Quaternion(), c: V(0, 0, 0), n: V(0, 1, 0), ax: V(0, 0, 0), sd: V(0, 0, 0), h: V(0, 0, 0), hd: V(0, 0, 0), t: V(0, 0, 0), q: new THREE.Quaternion() };
+  for (let i = 0; i < 32; i++) GP.p.push(V(0, 0, 0));
+  CM.LEAN_MAX = 8 * Math.PI / 180;
+  function fitPlane(f, pts, n, cx, cz, ax, Lh) {
+    // y = h0 + gx (x - cx) + gz (z - cz), least squares over the points' ground heights and four points on the axes
+    const g = f.ground;
+    let S = 0, Sx = 0, Sz = 0, Sxx = 0, Szz = 0, Sxz = 0, Sy = 0, Sxy = 0, Szy = 0;
+    const add = (x, z) => { const y = g(x, z), dx = x - cx, dz = z - cz; S++; Sx += dx; Sz += dz; Sxx += dx * dx; Szz += dz * dz; Sxz += dx * dz; Sy += y; Sxy += dx * y; Szy += dz * y; };
+    for (let i = 0; i < n; i++) add(pts[i].x, pts[i].z);
+    const sx = -ax.z, sz = ax.x, Wh = 0.3;
+    add(cx + ax.x * Lh, cz + ax.z * Lh); add(cx - ax.x * Lh, cz - ax.z * Lh); add(cx + sx * Wh, cz + sz * Wh); add(cx - sx * Wh, cz - sz * Wh);
+    // solve [S Sx Sz; Sx Sxx Sxz; Sz Sxz Szz] [h0 gx gz] = [Sy Sxy Szy]
+    const a = [[S, Sx, Sz, Sy], [Sx, Sxx, Sxz, Sxy], [Sz, Sxz, Szz, Szy]];
+    for (let c = 0; c < 3; c++) {
+      let piv = c; for (let r = c + 1; r < 3; r++) if (Math.abs(a[r][c]) > Math.abs(a[piv][c])) piv = r;
+      [a[c], a[piv]] = [a[piv], a[c]];
+      if (Math.abs(a[c][c]) < 1e-9) return null;
+      for (let r = 0; r < 3; r++) if (r !== c) { const k = a[r][c] / a[c][c]; for (let k2 = c; k2 < 4; k2++) a[r][k2] -= k * a[c][k2]; }
+    }
+    return { h0: a[0][3] / a[0][0], gx: a[1][3] / a[1][1], gz: a[2][3] / a[2][2] };
+  }
+  function groundPose(f, w, dt) {
+    const b = f.b, root = f.F.root, sc = f.scale, g = f.ground, jump = !!f.gJump;
+    const nP = PROBES.length;
+    // how far he is lying (the hips-to-head line from vertical) and kneeling (a kneeling clip, hips low over the contacts)
+    wpos(b[MB('Hips')], GP.h); wpos(b[MB('Head')], GP.hd);
+    GP.t.subVectors(GP.hd, GP.h); const up = GP.t.y / (GP.t.length() || 1);
+    const lieK = 1 - smooth(0.5, 0.82, up);
+    // a man standing up (not lying, no kneeling or sitting clip): the old lowest-contact lift, and the lean
+    if ((lieK <= 0 && w.kneel <= 0 && w.sit <= 0) || f.o.noGround) return standOnGround(f, dt, jump, lieK);
+    // probes in world space, root yawed only: their heights over the root are the pose's own heights
+    let lmin = Infinity;
+    for (let i = 0; i < nP; i++) {
+      const P = PROBES[i];
+      GP.p[i].set(P[1], P[2], P[3]).applyMatrix4(b[MB(P[0])].matrixWorld);
+      GP.ly[i] = GP.p[i].y - P[4] * sc; if (GP.ly[i] < lmin) lmin = GP.ly[i];
+    }
+    const hipH = (GP.h.y - lmin) / sc, kneelK = w.kneel * (1 - smooth(0.56, 0.7, hipH)) * (1 - lieK);
+    const tiltK = f.o.noGround ? 0 : Math.max(lieK, kneelK), sitK = f.o.noGround ? 0 : w.sit * (1 - lieK);
+    f.lieK = lieK;
+    // contacts: the pose's footprint
+    const cont = GP.cont; cont.length = 0; let cx = 0, cz = 0, cy = 0;
+    for (let i = 0; i < nP; i++) { GP.ci[i] = 0; if (GP.ly[i] - lmin < 0.04) { cont.push(i); GP.ci[i] = 1; cx += GP.p[i].x; cz += GP.p[i].z; cy += GP.p[i].y; } }
+    cx /= cont.length; cz /= cont.length; cy /= cont.length;
+    // the body's long axis (hips to head when lying, else the heading), horizontal
+    if (lieK > 0.3) GP.ax.set(GP.t.x, 0, GP.t.z); else GP.ax.set(Math.sin(f.yaw), 0, Math.cos(f.yaw));
+    if (GP.ax.lengthSq() < 1e-6) GP.ax.set(Math.sin(f.yaw), 0, Math.cos(f.yaw));
+    GP.ax.normalize();
+    // the plane (cached for a man who has not moved, refreshed every 0.4 s, never for the still dead)
+    const C = f.gc;
+    const stale = !C || Math.hypot(C.x - f.sx, C.z - f.sz) > 0.03 || Math.abs(C.yaw - f.yaw) > 0.03 || Math.abs(C.lie - lieK) > 0.15 || (!f.raw && f.t - C.t > 0.4) || f.t < C.t;
+    if (stale) {
+      let Lh = 0.4; for (const i of cont) Lh = Math.max(Lh, Math.abs((GP.p[i].x - cx) * GP.ax.x + (GP.p[i].z - cz) * GP.ax.z));
+      const pts = GP.pts; pts.length = 0; for (const i of cont) pts.push(GP.p[i]);
+      const P = fitPlane(f, pts, pts.length, cx, cz, GP.ax, Math.min(1.0, Lh));
+      f.gc = { x: f.sx, z: f.sz, yaw: f.yaw, lie: lieK, t: f.t, gx: P ? P.gx : 0, gz: P ? P.gz : 0 };
+      CM.gstat.fits++;
+    }
+    const gx = f.gc.gx, gz = f.gc.gz;
+    GP.n.set(-gx, 1, -gz).normalize();
+    // the tilt, eased (a new view or a jump of the root snaps it)
+    GP.qT.setFromUnitVectors(UP, GP.n);
+    GP.q.identity().slerp(GP.qT, tiltK);
+    if (!f.gq || f.gJump) { f.gq = (f.gq || new THREE.Quaternion()).copy(GP.q); f.gJump = false; }
+    else f.gq.slerp(GP.q, 1 - Math.exp(-dt / 0.15));
+    // (no matrix update until the end: the probes are carried along by the same rigid turns, which is exact)
+    if (f.gq.w < 0.99999) {
+      // turn the body about the contacts' centre
+      GP.c.set(cx, cy, cz);
+      root.position.sub(GP.c).applyQuaternion(f.gq).add(GP.c);
+      root.quaternion.premultiply(f.gq);
+      for (let i = 0; i < nP; i++) GP.p[i].sub(GP.c).applyQuaternion(f.gq).add(GP.c);
+      // a kneeling man: the torso back upright from the waist (Spine turned by qY in world, about its own joint)
+      if (kneelK > 0.01) {
+        const sp = b[MB('Spine')];
+        GP.q.copy(f.gq).invert(); GP.qY.identity().slerp(GP.q, kneelK / Math.max(1e-3, tiltK));
+        wquat(b[MB('Hips')], _q1); wquat(sp, _q2);
+        // local = (gq hips)^-1 qY gq spine
+        _q3.copy(f.gq).multiply(_q1).invert().multiply(GP.qY).multiply(f.gq).multiply(_q2); sp.quaternion.copy(_q3);
+        wpos(sp, GP.hd).sub(GP.c).applyQuaternion(f.gq).add(GP.c);
+        for (let i = 0; i < nP; i++) if (UPPER[i]) GP.p[i].sub(GP.hd).applyQuaternion(GP.qY).add(GP.hd);
+      }
+    }
+    // standing: lean into a steep slope (up the slope, forward; down it, back a little); the probes that count for the
+    // lift (feet, knees, seat) are not moved by it
+    const standK = 1 - Math.max(tiltK, sitK);
+    if (standK > 0.01 && !f.o.noGround) {
+      const rise = gx * Math.sin(f.yaw) + gz * Math.cos(f.yaw);
+      const lean = clamp(Math.atan(rise) * 0.3, -CM.LEAN_MAX, CM.LEAN_MAX) * standK;
+      if (Math.abs(lean) > 1e-3) { premul(b[MB('Spine')], RIGHT, -lean * 0.6); premul(b[MB('Spine1')], RIGHT, -lean * 0.4); }
+    }
+    // the lift: a standing man's lowest point on the ground; a man on the ground: his contacts on the ground on average,
+    // nothing deeper than 3 cm
+    let lAll = -Infinity, lC = 0;
+    for (let i = 0; i < nP; i++) {
+      const p = GP.p[i], pen = g(p.x, p.z) + PROBES[i][4] * sc - p.y;
+      if (pen > lAll) lAll = pen;
+      if (GP.ci[i]) lC += pen;
+    }
+    lC /= cont.length;
+    const gk = Math.max(tiltK, 0);
+    const lift = lAll + (Math.max(lC, lAll - 0.025) - lAll) * gk;
+    f.lift = f.lift === undefined || jump ? lift : f.lift + (lift - f.lift) * Math.min(1, dt * 12);
+    root.position.y += f.lift; root.updateMatrixWorld(true);
+    // sitting: each foot down (or up) onto the slope, the sole turned to the ground
+    if (sitK > 0.01) for (const s of ['Left', 'Right']) {
+      const ft = b[MB(s + 'Foot')], toe = b[MB(s + 'ToeBase')];
+      const heel = _v1.set(0, -0.085, -0.075).applyMatrix4(ft.matrixWorld), tip = _v2.set(0, -0.03, 0.065).applyMatrix4(toe.matrixWorld);
+      const d = clamp(Math.max(g(heel.x, heel.z) - heel.y, g(tip.x, tip.z) - tip.y), -0.35, 0.2) * sitK;
+      if (Math.abs(d) < 0.005) continue;
+      const fq = wquat(ft, new THREE.Quaternion()), tgt = wpos(ft, V(0, 0, 0)); tgt.y += d;
+      const knee = wpos(b[MB(s + 'Leg')], V(0, 0, 0)), pole = knee.clone().add(V(Math.sin(f.yaw), 0, Math.cos(f.yaw)).multiplyScalar(0.4));
+      twoBoneIK(b[MB(s + 'UpLeg')], b[MB(s + 'Leg')], ft, tgt, pole);
+      _q1.setFromUnitVectors(UP, GP.n); _q2.identity().slerp(_q1, sitK); fq.premultiply(_q2);
+      setWorldQuat(ft, fq); ft.updateMatrixWorld(true);
+    }
+    // for plug-ins that place the root themselves on frames they do not update (CM.place)
+    f.rootOff = (f.rootOff || V(0, 0, 0)).set(root.position.x - f.sx, root.position.y - g(f.sx, f.sz), root.position.z - f.sz);
+  }
+  CM.gstat = { fits: 0 };
+  const UPPER_B = new Set(['Spine', 'Spine1', 'Spine2', 'Neck', 'Head', 'LeftShoulder', 'RightShoulder', 'LeftArm', 'RightArm', 'LeftForeArm', 'RightForeArm', 'LeftHand', 'RightHand']);
+  let UPPER = null;   // filled once PROBES is defined
+  // standing: the slope under him (four samples, cached like the plane), a lean into it, the lowest contact on the ground
+  function standOnGround(f, dt, jump, lieK) {
+    const b = f.b, root = f.F.root, sc = f.scale, g = f.ground;
+    f.lieK = lieK;
+    if (f.gq) { f.gq = null; }
+    if (!f.o.noGround) {
+      const C = f.gc;
+      if (!C || Math.hypot(C.x - f.sx, C.z - f.sz) > 0.15 || f.t - C.t > 1 || f.t < C.t) {
+        const e = 0.5, x = f.sx, z = f.sz;
+        f.gc = { x, z, yaw: f.yaw, lie: lieK, t: f.t, gx: (g(x + e, z) - g(x - e, z)) / (2 * e), gz: (g(x, z + e) - g(x, z - e)) / (2 * e) };
+        CM.gstat.fits++;
+      }
+      const rise = f.gc.gx * Math.sin(f.yaw) + f.gc.gz * Math.cos(f.yaw);
+      const lean = clamp(Math.atan(rise) * 0.3, -CM.LEAN_MAX, CM.LEAN_MAX);
+      if (Math.abs(lean) > 1e-3) { premul(b[MB('Spine')], RIGHT, -lean * 0.6); premul(b[MB('Spine1')], RIGHT, -lean * 0.4); }
+    }
+    // (the lift from the pose before the lean: the feet and knees it rests on are below the waist, the hands may move a
+    // centimetre or two)
+    let lift = -Infinity;
+    for (let i = 0; i < PROBES.length; i++) {
+      const P = PROBES[i]; _v1.set(P[1], P[2], P[3]).applyMatrix4(b[MB(P[0])].matrixWorld);
+      lift = Math.max(lift, g(_v1.x, _v1.z) + P[4] * sc - _v1.y);
+    }
+    f.lift = f.lift === undefined || jump ? lift : f.lift + (lift - f.lift) * Math.min(1, dt * 12);
+    root.position.y += f.lift; root.updateMatrixWorld(true);
+    f.gJump = false;
+    f.rootOff = (f.rootOff || V(0, 0, 0)).set(root.position.x - f.sx, root.position.y - g(f.sx, f.sz), root.position.z - f.sz);
+  }
+  // a frame a plug-in skips: the root where the last update left it relative to (f.x, f.z), tilted as then
+  CM.place = function (f, extraY) {
+    const root = f.F.root, o = f.rootOff;
+    if (!o) { root.position.set(f.x, f.ground(f.x, f.z) + (f.lift || 0) + (extraY || 0), f.z); root.rotation.set(0, f.yaw, 0); return; }
+    root.position.set(f.x + o.x, f.ground(f.x, f.z) + o.y + (extraY || 0), f.z + o.z);
+    root.quaternion.setFromAxisAngle(UP, f.yaw); if (f.gq) root.quaternion.premultiply(f.gq);
+  };
+  // the yaw that lays a man head uphill: headYaw is the head's bearing from the hips in figure space (yaw 0)
+  CM.uphillYaw = function (ground, x, z, headYaw) {
+    const e = 0.6, gx = (ground(x + e, z) - ground(x - e, z)) / (2 * e), gz = (ground(x, z + e) - ground(x, z - e)) / (2 * e);
+    if (Math.hypot(gx, gz) < 0.03) return null;
+    return Math.atan2(gx, gz) - (headYaw || 0);
+  };
+
   // contact probes: bone, point in the bone's frame (identity bind, so figure axes), radius
   const PROBES = [
     ['LeftFoot', 0, -0.085, -0.075, 0], ['RightFoot', 0, -0.085, -0.075, 0], ['LeftToeBase', 0, -0.03, 0.065, 0], ['RightToeBase', 0, -0.03, 0.065, 0],
@@ -669,13 +864,17 @@
     ['LeftLeg', 0, 0, 0.07, 0.01], ['RightLeg', 0, 0, 0.07, 0.01], ['Hips', 0, -0.13, -0.08, 0.06], ['Hips', 0, -0.05, -0.17, 0.02],
     ['Spine2', 0, 0.02, -0.2, 0.0], ['Spine2', 0, 0.02, 0.2, 0.0], ['Spine2', 0.2, 0.02, 0, 0.0], ['Spine2', -0.2, 0.02, 0, 0.0], ['Head', 0, 0.17, 0, 0.2],
     ['LeftHand', 0, -0.05, 0, 0.02], ['RightHand', 0, -0.05, 0, 0.02], ['LeftForeArm', 0, 0, 0, 0.05], ['RightForeArm', 0, 0, 0, 0.05],
+    ['Hips', 0, -0.05, 0.13, 0.0], ['LeftToeBase', 0, 0.03, 0.065, 0], ['RightToeBase', 0, 0.03, 0.065, 0],
   ];
+  UPPER = PROBES.map((P) => UPPER_B.has(P[0]));
 
   // ---------------------------------------------------------------- 1. arms, rifle, sling, free arms
   const SLING = new THREE.Matrix4();
-  { // slung across the back, muzzle up over the right shoulder, in chest (Spine2) space
-    const x = V(-0.42, 0.9, -0.05).normalize(), y = V(0, 0, -1), z = V(0, 0, 0).crossVectors(x, y).normalize(); y.crossVectors(z, x).normalize();
-    SLING.makeBasis(x, y, z).setPosition(0.13, -0.25, -0.26);
+  { // slung across the back, muzzle up over the right shoulder, in chest (Spine2) space: flat on its side against the
+    // vest (its left side on the back, about 2.5 cm from the back's surface at z -0.2 to the rifle's middle), so it rides
+    // on the back rather than standing off it on its magazine (fix pass, ground and grip)
+    const x = V(-0.42, 0.9, -0.05).normalize(), z = V(0, 0, -1); z.addScaledVector(x, -z.dot(x)).normalize(); const y = V(0, 0, 0).crossVectors(z, x).normalize();
+    SLING.makeBasis(x, y, z).setPosition(0.12, -0.22, -0.228);
   }
   const MAP_IN_HAND = new THREE.Matrix4().compose(V(-0.06, -0.08, 0.05), new THREE.Quaternion().setFromEuler(new THREE.Euler(0.2, 0.3, 1.25)), V(1, 1, 1));
   function setProp(f, bone, W) { _m2.copy(f.F.mesh.matrixWorld).invert().multiply(W); _m2.decompose(bone.position, bone.quaternion, _v4); bone.scale.copy(_v4); bone.updateMatrixWorld(true); }
@@ -694,6 +893,84 @@
     }
     for (let i = 1; i <= 3; i++) { const bone = f.b[MB(s + 'HandThumb' + i)]; _q2.setFromEuler(new THREE.Euler(0, sg * 0.25 * thumb, sg * 0.45 * thumb)); bone.quaternion.slerp(_q2, amt.w); }
   }
+  // The grips (fix pass, ground and grip; Abram: "when they hold their guns they are never actually holding them").
+  // Each hand closes on a real part of the weapon: the right palm on the pistol grip, the left palm under the handguard,
+  // from whichever side the clip's hand faces it (the palm's centre on the part's surface, the fingers curled round it).
+  // The right hand takes the rifle: where the clip's right hand cannot reach the grip, the rifle moves to the hand;
+  // where the left cannot reach the handguard (a clip's hands too far apart for the weapon), the rifle turns about the
+  // right grip toward the left hand; two passes. Points in the rifle's frame (as built, x 0.88); r: the part's half width.
+  const ATT = {
+    m16: { R: V(-0.055, -0.058, 0).multiplyScalar(0.88), rR: 0.016 * 0.88, L: V(0.215, 0.025, 0).multiplyScalar(0.88), rL: 0.03 * 0.88,
+      hull: [V(0.052, -0.142, 0), V(-0.36, -0.045, 0), V(0.56, 0.012, 0), V(-0.035, -0.105, 0), V(0.21, -0.005, 0), V(-0.36, 0.03, 0)].map((v) => v.multiplyScalar(0.88)) },
+    ak: { R: V(-0.05, -0.05, 0).multiplyScalar(0.88), rR: 0.014 * 0.88, L: V(0.18, 0.012, 0).multiplyScalar(0.88), rL: 0.021 * 0.88,
+      hull: [V(0.09, -0.165, 0), V(-0.33, -0.06, 0), V(0.46, 0.016, 0), V(-0.045, -0.09, 0), V(0.18, -0.01, 0), V(-0.33, 0.02, 0)].map((v) => v.multiplyScalar(0.88)) },
+  };
+  CM.ATT = ATT;
+  const attOf = (F) => (F.kind === 'nva' ? ATT.ak : ATT.m16);
+  const PALM_N = { Left: V(-1, 0, 0), Right: V(1, 0, 0) };   // out of the palm, in the hand's frame
+  const GR = { c: V(0, 0, 0), n: V(0, 0, 0), t: V(0, 0, 0), w: V(0, 0, 0), m: V(0, 0, 0), pole: V(0, 0, 0), hq: new THREE.Quaternion(), q: new THREE.Quaternion(), a: V(0, 0, 0), bb: V(0, 0, 0) };
+  // where the palm of side s must be for the hand to close on the part (world), given the rifle (pW, qW) and the hand's turn
+  function palmTarget(f, s, pW, qW, hq, out) {
+    const at = attOf(f.F), sc = f.scale;
+    out.copy(s === 'Right' ? at.R : at.L).multiplyScalar(sc).applyQuaternion(qW).add(pW);
+    GR.n.copy(PALM_N[s]).applyQuaternion(hq);
+    return out.addScaledVector(GR.n, -(s === 'Right' ? at.rR : at.rL) * sc);
+  }
+  // one hand by IK onto its part; returns the wrist's miss (world, from where it should be to where it got)
+  function handTo(f, s, pW, qW, rel, chest) {
+    const b = f.b, ua = b[MB(s + 'Arm')], fa = b[MB(s + 'ForeArm')], hd = b[MB(s + 'Hand')];
+    GR.hq.copy(qW).multiply(rel);
+    palmTarget(f, s, pW, qW, GR.hq, GR.t);
+    GR.t.sub(GR.w.copy(PALM[s]).multiplyScalar(f.scale).applyQuaternion(GR.hq));   // the wrist
+    wpos(fa, GR.pole); const sg = s === 'Left' ? 1 : -1;
+    GR.pole.add(_v2.set(sg * 0.25, -0.2, -0.05).multiplyScalar(f.scale).applyQuaternion(wquat(chest, _q2)));
+    twoBoneIK(ua, fa, hd, GR.t, GR.pole);
+    setWorldQuat(hd, GR.hq); hd.updateMatrixWorld(true);
+    return GR.m.subVectors(wpos(hd, GR.w), GR.t);
+  }
+  // both hands on the rifle; follow: the rifle may move to the right hand and turn toward the left
+  function gripBoth(f, pW, qW, chest, follow) {
+    for (let it = 0; it < 2; it++) {
+      const mR = handTo(f, 'Right', pW, qW, R_.qR, chest);
+      if (follow && mR.length() > 0.002) pW.add(mR);
+      const mL = handTo(f, 'Left', pW, qW, R_.qL, chest);
+      if (!follow || mL.length() < 0.004) break;
+      // turn the rifle about the right palm's point so the handguard comes to where the left hand got
+      palmTarget(f, 'Right', pW, qW, GR.hq.copy(qW).multiply(R_.qR), GR.c);
+      palmTarget(f, 'Left', pW, qW, GR.hq.copy(qW).multiply(R_.qL), GR.a);
+      GR.bb.copy(GR.a).add(mL);
+      GR.q.setFromUnitVectors(GR.a.sub(GR.c).normalize(), GR.bb.sub(GR.c).normalize());
+      qW.premultiply(GR.q); pW.sub(GR.c).applyQuaternion(GR.q).add(GR.c);
+    }
+  }
+  // a rifle at rest on the ground at p (world; y is found), barrel along dir: on its side (side) or upright (on its magazine)
+  const GN = V(0, 1, 0);
+  function groundNormal(f, x, z, out) { const g = f.ground, e = 0.25; return out.set(-(g(x + e, z) - g(x - e, z)) / (2 * e), 1, -(g(x, z + e) - g(x, z - e)) / (2 * e)).normalize(); }
+  CM.groundRest = function (f, p, dir, side, outP, outQ) {
+    const n = groundNormal(f, p.x, p.z, GN), sc = f.scale;
+    const x = V(0, 0, 0).copy(dir).addScaledVector(n, -dir.dot(n)); if (x.lengthSq() < 1e-6) x.set(1, 0, 0); x.normalize();
+    let y, z;
+    if (side) { z = n.clone(); y = V(0, 0, 0).crossVectors(z, x); } else { y = n.clone(); z = V(0, 0, 0).crossVectors(x, y); }
+    outQ.setFromRotationMatrix(_m2.makeBasis(x, y, z));
+    outP.set(p.x, 0, p.z);
+    // down onto the ground: the lowest of the hull points (and, on its side, its own half thickness) touches it
+    if (side) { outP.y = f.ground(p.x, p.z); outP.addScaledVector(n, 0.025 * sc); }
+    else {
+      let need = -Infinity;
+      for (const h of attOf(f.F).hull) { _v3.copy(h).multiplyScalar(sc).applyQuaternion(outQ); need = Math.max(need, f.ground(p.x + _v3.x, p.z + _v3.z) + 0.006 - _v3.y); }
+      outP.y = need;
+    }
+    return outP;
+  };
+  // after a plug-in turns the chest about (glances, flinches, a litter bearer's lean, a drag's lifted chest): the rifle
+  // that rides on the body (in the hands or on the sling) is put back where it rides; the hands, children of the chest,
+  // came with it
+  CM.settle = function (f) {
+    if (!f.F.grip || !f.rifleRel) return;
+    const chest = f.b[MB('Spine2')]; f.F.root.updateMatrixWorld(true);
+    setProp(f, f.b.rifle, _m1.multiplyMatrices(chest.matrixWorld, f.rifleRel));
+  };
+  const _rp = V(0, 0, 0), _rq = new THREE.Quaternion(), _rd = V(0, 0, 0);
   function arms(f, dt, w, on) {
     const b = f.b, F = f.F, mesh = F.mesh, hasRifle = !!F.grip;
     const chest = b[MB('Spine2')];
@@ -701,10 +978,11 @@
     if (hasRifle) {
       // where the rifle is held this frame (blended over the playing two-hand and carrying clips), in world space; a fall
       // lets go of it at the clip's drop time and it settles on the ground
-      let wsum = 0; R_.p.set(0, 0, 0); let qi = 0, dropping = null;
+      let wsum = 0; R_.p.set(0, 0, 0); let qi = 0, dropping = null, back = false;
       const idle = clips['Rifle Idle'] && clips['Rifle Idle'].userData.rifle;
       for (const a of activeActs(f)) {
         const ud = a.getClip().userData, cfg = ud.cfg, src = ud.rifle || (cfg.rifle === 'carry' ? idle : null);
+        if (cfg.back) back = true;
         if (!src) continue;
         let ww = a.getEffectiveWeight();
         if (cfg.drop !== undefined) {
@@ -718,12 +996,14 @@
         if (qi === 0) { R_.q.copy(_q2); R_.qR.copy(src.qR); R_.qL.copy(src.qL); } else { const k = ww / (wsum + ww); R_.q.slerp(_q2, k); R_.qR.slerp(src.qR, k); R_.qL.slerp(src.qL, k); }
         wsum += ww; qi++;
       }
-      const hold = on('rifle') ? clamp(wsum, 0, 1) : 0;
-      if (!on('rifle') && w.two > 0.5) {
+      // the rifle layer is not part of a still man's life (f.raw): the dead keep their rifle where it fell
+      const rOn = L.rifle, hold = rOn ? clamp(wsum, 0, 1) : 0;
+      if (!rOn && w.two > 0.5) {
         const pr = R_.tgt.copy(PALM.Right).multiplyScalar(f.scale).applyMatrix4(b[MB('RightHand')].matrixWorld), pl = PALM.Left.clone().multiplyScalar(f.scale).applyMatrix4(b[MB('LeftHand')].matrixWorld);
         const Wr = aimFrame(pr.clone().lerp(pl, 0.12), pl.clone().addScaledVector(pl.clone().sub(pr).normalize(), 0.3)).multiply(RIFLE_CINV);
         const p0 = V(0, 0, 0), q0 = new THREE.Quaternion(); Wr.decompose(p0, q0, _v4);
         setProp(f, b.rifle, Wr.compose(p0, q0, _v4.set(1, 1, 1).multiplyScalar(f.scale)));
+        f.rifleRel = null; f.rifleMode = 'off';
         return;
       }
       const chestW = chest.matrixWorld;
@@ -734,7 +1014,7 @@
       if (hold >= 1) W.copy(R_.W); else if (hold <= 0) W.copy(R_.Ws);
       else { const p1 = V(0, 0, 0), q1 = new THREE.Quaternion(), p2 = V(0, 0, 0), q2 = new THREE.Quaternion(); R_.W.decompose(p1, q1, _v4); R_.Ws.decompose(p2, q2, _v4); W.compose(p1.lerp(p2, 1 - hold), q1.slerp(q2, 1 - hold), _v4.set(1, 1, 1)); }
       const pW = V(0, 0, 0), qW = new THREE.Quaternion(); W.decompose(pW, qW, _v4);
-      if (on('rifle')) { const q = qSpring(f.sp.rifle, qW, 355, 17, dt, 0.08); qW.copy(q); } else f.sp.rifle.init = false;
+      if (rOn && !f.raw) { const q = qSpring(f.sp.rifle, qW, 355, 17, dt, 0.08); qW.copy(q); } else f.sp.rifle.init = false;
       // a shot's kick (f.kick, set by the plug-in that fires him, about 1 at the instant of a round): the muzzle climbs
       // and the rifle comes back into the shoulder; the hands follow it by the IK below
       // a man firing (f.aimAt, a world point, with weight f.aimK 0-1, set by the plug-in): the held rifle turns about its
@@ -744,38 +1024,69 @@
         if (KICK_V.angleTo(AIM_D) < 1.4) { AIM_Q.setFromUnitVectors(KICK_V, AIM_D); AIM_I.identity().slerp(AIM_Q, Math.min(1, f.aimK)); qW.premultiply(AIM_I); }
       }
       if (f.kick > 0.002 && hold > 0.5 && !dropping) { _q2.setFromAxisAngle(KICK_AX, Math.min(1.6, f.kick) * 0.075); qW.multiply(_q2); pW.addScaledVector(KICK_V.set(1, 0, 0).applyQuaternion(qW), -0.035 * Math.min(1.6, f.kick) * f.scale); }
-      if (dropping && on('rifle')) {
+      // a man down: held and not firing, the rifle rests on the ground under his hands (rest); slung, it lies on the
+      // ground beside his right hand (side), unless he crawls (it stays on his back)
+      const lie = smooth(0.45, 0.75, f.lieK || 0);
+      const restK = dropping ? 0 : lie * (1 - smooth(0.05, 0.4, f.aimK || 0)) * (hold > 0 ? 1 : 0);
+      const sideK = dropping || back ? 0 : lie * (1 - hold);
+      // where the side rest is: under his right hand, a hand's width out from his body, barrel toward his head
+      const sidePose = () => {
+        const hr = wpos(b[MB('RightHand')], _rp), hip = wpos(b[MB('Hips')], _v3), hd = wpos(b[MB('Head')], _rd);
+        const out = _v2.set(-1, 0, 0).applyQuaternion(f.F.root.quaternion); out.y = 0; out.normalize();
+        const at = V(hr.x + out.x * 0.07 * f.scale, 0, hr.z + out.z * 0.07 * f.scale);
+        const dir = hd.sub(hip); dir.y = 0; if (dir.lengthSq() < 1e-6) dir.set(Math.sin(f.yaw), 0, Math.cos(f.yaw)); dir.normalize();
+        const q = new THREE.Quaternion(), p = CM.groundRest(f, at, dir, true, V(0, 0, 0), q);
+        // the pistol grip under the hand, not the rifle's origin
+        p.addScaledVector(V(0, 0, 0).copy(attOf(F).R).multiplyScalar(f.scale).applyQuaternion(q).setY(0), -1);
+        p.y = f.ground(p.x, p.z) + 0.025 * f.scale;
+        return { p, q };
+      };
+      if (restK > 0.001) {
+        const q = new THREE.Quaternion(), p = CM.groundRest(f, pW, V(1, 0, 0).applyQuaternion(qW), false, V(0, 0, 0), q);
+        pW.lerp(p, restK); qW.slerp(q, restK);
+      }
+      // (kept while he lies still; found again when he moves, as a dragged man does)
+      if (sideK > 0.001 && (!f.sideRest || Math.hypot(f.sideRest.x - f.sx, f.sideRest.z - f.sz) > 0.03 || Math.abs(f.sideRest.yaw - f.yaw) > 0.03)) { f.sideRest = sidePose(); f.sideRest.x = f.sx; f.sideRest.z = f.sz; f.sideRest.yaw = f.yaw; }
+      if (sideK > 0.001 && f.sideRest) { pW.lerp(f.sideRest.p, sideK); qW.slerp(f.sideRest.q, sideK); }
+      if (sideK < 0.001 && f.sideRest && (f.lieK || 0) < 0.3) f.sideRest = null;
+      if (dropping && rOn) {
         if (!f.drop || f.drop.act !== dropping) {
-          // where it lets go, and where it comes to rest: flat on the ground on its side, barrel the way it pointed
-          const x = V(1, 0, 0).applyQuaternion(qW).setY(0).normalize(), z = V(0, 1, 0), y = V(0, 0, 0).crossVectors(z, x);
-          const q1 = new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(x, y, z));
-          f.drop = { act: dropping, t: f.t, p0: pW.clone(), q0: qW.clone(), p1: V(pW.x, f.ground(pW.x, pW.z) + 0.03 * f.scale, pW.z), q1 };
+          // where it lets go, and where it comes to rest: on its side on the slope beside his right hand, barrel toward
+          // his head (the plug-in may move the rest point: marines-c patches p1, q1)
+          const S = sidePose();
+          f.drop = { act: dropping, t: f.t, p0: pW.clone(), q0: qW.clone(), p1: S.p, q1: S.q };
         }
         const D = f.drop, k = clamp((f.t - D.t) / 0.4, 0, 1), kk = k * k;
         pW.copy(D.p0).lerp(D.p1, kk); qW.copy(D.q0).slerp(D.q1, smooth(0, 1, k));
       }
       // between the two-hand hold and the sling the blend would swing the rifle through the body: hide it for the middle
       // of the crossfade (hold 0.2-0.8, about 0.4 s of a 0.45 s fade) and show it again in the new hold (integration)
-      const vis = dropping || !on('rifle') ? 1 : Math.max(smooth(0.6, 0.85, hold), 1 - smooth(0.15, 0.4, hold));
-      W.compose(pW, qW, _v4.set(1, 1, 1).multiplyScalar(f.scale));
-      setProp(f, b.rifle, W);   // full size for the hands' IK below; shrunk after it when hidden
-      if (hold > 0) {
-        // both hands onto the rifle by IK, the elbows bending toward where the clip has them, splayed out from the vest
-        for (const s of ['Right', 'Left']) {
-          const saved = snapArm(f, s), ua = b[MB(s + 'Arm')], fa = b[MB(s + 'ForeArm')], hd = b[MB(s + 'Hand')];
-          const handQ = new THREE.Quaternion().copy(qW).multiply(s === 'Right' ? R_.qR : R_.qL);
-          const grip = (s === 'Right' ? F.grip.R : F.grip.L).clone().applyMatrix4(b.rifle.matrixWorld);
-          const tgt = R_.tgt.copy(PALM[s]).multiplyScalar(f.scale).applyQuaternion(handQ).negate().add(grip);
-          wpos(fa, R_.pole); const sg = s === 'Left' ? 1 : -1;
-          R_.pole.add(_v2.set(sg * 0.25, -0.2, -0.05).multiplyScalar(f.scale).applyQuaternion(wquat(chest, _q2)));
-          twoBoneIK(ua, fa, hd, tgt, R_.pole);
-          const hq = handQ.clone(); setWorldQuat(hd, hq);
-          blendArm(f, s, saved, hold);
-          curl(f, s, { c: 1.05, w: hold }, s === 'Right' ? 0.75 : 1, 0.8);
-          ua.updateMatrixWorld(true);
+      const vis = dropping || !rOn || sideK > 0.5 ? 1 : Math.max(smooth(0.6, 0.85, hold), 1 - smooth(0.15, 0.4, hold));
+      if (hold > 0 && !dropping) {
+        // both hands onto the rifle by IK, the elbows bending toward where the clip has them, splayed out from the vest;
+        // held in the air, the rifle goes to the right hand; resting on the ground, it stays and the hands reach it
+        const saved = [snapArm(f, 'Right'), snapArm(f, 'Left')];
+        gripBoth(f, pW, qW, chest, restK < 0.5);
+        blendArm(f, 'Right', saved[0], hold); blendArm(f, 'Left', saved[1], hold);
+        curl(f, 'Right', { c: 1.15, w: hold }, 0.75, 0.9); curl(f, 'Left', { c: 1.2, w: hold }, 1, 0.9);
+        b[MB('RightArm')].updateMatrixWorld(true); b[MB('LeftArm')].updateMatrixWorld(true);
+      } else if (sideK > 0.3 && !dropping) {
+        // lying beside it: his right hand on the pistol grip when it is near
+        const at = attOf(F), gp = V(0, 0, 0).copy(at.R).multiplyScalar(f.scale).applyQuaternion(qW).add(pW);
+        const palm = V(0, 0, 0).copy(PALM.Right).multiplyScalar(f.scale).applyMatrix4(b[MB('RightHand')].matrixWorld);
+        if (palm.distanceTo(gp) < 0.3 * f.scale) {
+          const saved = snapArm(f, 'Right');
+          R_.qR.copy(clips['Rifle Idle'] && clips['Rifle Idle'].userData.rifle ? clips['Rifle Idle'].userData.rifle.qR : R_.qR);
+          handTo(f, 'Right', pW, qW, R_.qR, chest);
+          blendArm(f, 'Right', saved, sideK); curl(f, 'Right', { c: 1.15, w: sideK }, 0.75, 0.9);
         }
       }
-      if (vis < 0.999) { W.compose(pW, qW, _v4.set(1, 1, 1).multiplyScalar(f.scale * Math.max(0.001, vis))); setProp(f, b.rifle, W); }
+      W.compose(pW, qW, _v4.set(1, 1, 1).multiplyScalar(f.scale * (vis < 0.999 ? Math.max(0.001, vis) : 1)));
+      setProp(f, b.rifle, W);
+      // how it rides, for CM.settle: on the body (in the hands or slung), or on the ground
+      f.rifleMode = dropping ? 'dropped' : restK > 0.5 ? 'rest' : sideK > 0.5 ? 'ground' : hold > 0.5 ? 'held' : 'slung';
+      if (f.rifleMode === 'held' || f.rifleMode === 'slung') { chest.updateMatrixWorld(true); f.rifleRel = (f.rifleRel || new THREE.Matrix4()).copy(chest.matrixWorld).invert().multiply(b.rifle.matrixWorld); }
+      else f.rifleRel = null;
     } else if (w.two > 0 && on('rifle')) freeArms(f, dt, w.two);
   }
   // free arms for a man with no rifle in a clip made for one: hanging pendulums that swing against the opposite leg
