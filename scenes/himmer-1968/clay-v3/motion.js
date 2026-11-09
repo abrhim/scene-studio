@@ -521,6 +521,58 @@
   }
   // Routes: CM.route(f, [[x, z], ...], { stop: 'Rifle Idle', turn: 1.2 }) walks the figure (on whatever clip is playing)
   // along the points, turning at most turn rad/s toward the next one, and plays the stop clip at the last.
+  // ---------- crowd separation (fix pass, hill689: "they're walking through each other") ----------
+  // Every marines file adds each shown man once a frame (CM.crowdAdd, his drawn position) and asks for his offset
+  // (CM.crowdOffset) against the men added the frame before by every file (a frame's lag, so the order of the files does
+  // not matter). Only a moving man is pushed: he steps round standing and kneeling men (0.4 m discs), lying men (0.9 m)
+  // and other moving men; between two movers the man behind yields to the man ahead. The push is a lateral offset to
+  // his route, eased in and out over a few frames and never more than 1.4 m. Men in one drag or litter share a group
+  // and do not push each other.
+  const CROWD = { t: null, cur: [], prev: [], grid: new Map() };
+  CM.crowd = CROWD;
+  const cKey = (x, z) => Math.floor(x / 2) * 73856093 ^ Math.floor(z / 2) * 19349663;
+  function crowdSwap(t) {
+    if (CROWD.t === t) return;
+    CROWD.t = t; CROWD.prev = CROWD.cur; CROWD.cur = []; CROWD.grid.clear();
+    for (const e of CROWD.prev) { const k = cKey(e.x, e.z); let l = CROWD.grid.get(k); if (!l) CROWD.grid.set(k, (l = [])); l.push(e); }
+  }
+  // r: his radius (0.45 walking, 0.4 standing or kneeling, 0.9 lying); vx, vz: his heading when moving (unit), else 0
+  CM.crowdAdd = (t, id, x, z, r, moving, vx, vz, group) => { crowdSwap(t); CROWD.cur.push({ id, x, z, r, moving, vx, vz, group }); };
+  // st: the man's own state object ({ ox, oz } kept between frames); returns st with ox, oz eased toward the push
+  CM.crowdOffset = (t, dt, id, bx, bz, vx, vz, group, st) => {
+    crowdSwap(t);
+    st.ox = st.ox || 0; st.oz = st.oz || 0;
+    // he looks ahead: the nearer of now and 0.8 s on (both men moving on as they head), so he starts round a man, or a
+    // man crossing his path, before they meet
+    const x0 = bx + st.ox, z0 = bz + st.oz, LA = 0.75;
+    let px = 0, pz = 0;
+    const gx = Math.floor(x0 / 2), gz = Math.floor(z0 / 2);
+    for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) {
+      const l = CROWD.grid.get((gx + i) * 73856093 ^ (gz + j) * 19349663); if (!l) continue;
+      for (const e of l) {
+        if (e.id === id || (group && e.group === group)) continue;
+        const dmin = 0.45 + e.r + 0.15;
+        let dx = x0 - e.x, dz = z0 - e.z, d = Math.hypot(dx, dz);
+        if (d > 2.6) continue;
+        const qx = x0 + vx * LA - (e.x + e.vx * LA), qz = z0 + vz * LA - (e.z + e.vz * LA), dq = Math.hypot(qx, qz);
+        if (dq < d) { dx = qx; dz = qz; d = dq; }
+        if (d >= dmin) continue;
+        // two men on one spot part to either side (the order of their ids picks who goes which way)
+        if (d < 0.05) { const sg = String(id) < String(e.id) ? 1 : -1; dx = -vz * sg; dz = vx * sg; } else { dx /= d; dz /= d; }
+        let w = 1;
+        if (e.moving) { const behind = vx * (e.x - x0) + vz * (e.z - z0) > 0, ahead = e.vx * (x0 - e.x) + e.vz * (z0 - e.z) > 0; w = behind && !ahead ? 1 : !behind && ahead ? 0.15 : 0.6; }
+        // sideways round him, not back along the route: most of the push across his own heading
+        const along = dx * vx + dz * vz;
+        px += (dx - vx * along * 0.7) * (dmin - d) * w; pz += (dz - vz * along * 0.7) * (dmin - d) * w;
+      }
+    }
+    const k = Math.min(1, dt * 12);
+    let tx = st.ox + px * 2.5, tz = st.oz + pz * 2.5;
+    if (px === 0 && pz === 0) { const f = 1 - Math.min(1, dt * 1.2); tx = st.ox * f; tz = st.oz * f; }
+    const m = Math.hypot(tx, tz); if (m > 1.4) { tx *= 1.4 / m; tz *= 1.4 / m; }
+    st.ox += (tx - st.ox) * k; st.oz += (tz - st.oz) * k;
+    return st;
+  };
   CM.route = (f, pts, o) => { f.route = { pts, i: 0, stop: (o && o.stop) || 'Rifle Idle', turn: (o && o.turn) || 1.2 }; };
   function steer(f, dt) {
     const R = f.route; if (R.i >= R.pts.length) return;

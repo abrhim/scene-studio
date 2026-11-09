@@ -12,11 +12,14 @@
 // A jump in time (a chapter change, a seek) rebuilds each figure's state at once; at a loop's seam a figure whose start
 // and end differ fades out and back in (1.2 s).
 //
-// Nothing graphic (research.md 10): men fall gently (Dying (1)) and lie wounded, breathing (Laying Breathless, Sitting
-// Idle), never dead-still; no blood, no injury. The dead are never shown. Larry is never shown dying.
+// Nothing graphic (research.md 10): men fall gently (Dying (1)); no blood, no injury. The wounded lie breathing (Laying
+// Breathless). Abram's ruling, 2026-11-09: a man the record says was killed (here PFC Brown, KIA, research.md 3) lies
+// still after his fall, the fall's last frame held with the motion layer's life off, where he fell, in every later
+// chapter; the dead are never carried. Larry is never shown dying. No man sits on nothing: a seated man sits on a
+// hole's rear lip with his legs in the hole or on an ammunition box (WORKS.seat), the segment's floor under his soles.
 //
 // Timeline as built (loop seconds):
-//   1  0600   on the 689 perimeter's W-SW arc: men in holes, sitting, three walking; Himmer, his radioman and Connelly at
+//   1  0600   on the 689 perimeter's W-SW arc: men in holes, some on hole lips and ammo boxes, three walking; Himmer, his radioman and Connelly at
 //             the company's spot; the radioman on the handset 20-32; Himmer points 40-43
 //   2-3       in reserve on 689; four men stand watching the far ridge; the handset at the messages (ch 3: 30-56)
 //   4  1200   the noon request (handset 2-10); Himmer points 8; the men form on the slope outside the wire 12-50; Cahill
@@ -30,11 +33,12 @@
 //             23.1, a squad leader 24.3; six men into the crater ahead (21.5-28); Connelly moves up 26-36, points 38,
 //             on the handset 44-51 (the cease-fire arc at 46); Hunnicutt to his platoon commander 24, kneels 26-41,
 //             points the squad into his crater 41, all in by 57; the salvo 50-54: everyone on the left ducks; PFC Brown
-//             falls 35
+//             falls 35 and is still (killed)
 //   7  1500   pinned in craters and grass; Cahill walks to the LZ 8-80, hit at 22, 38 and 56 (Injured Walk from 40); the
 //             withdrawal order from his radioman 95-110 (arc at 97.3); Sgt Rider round the west flank 12-45; Panykaninec at
-//             the big crater's rim, hit 50.5; Hatcher down 31.3; Hunnicutt rises at 69.5 and is hit at 71.2, Sitting Idle;
-//             two poncho litters (two bearers at the ends, two relief men) toward the LZ, from 87 and 98
+//             the big crater's rim, hit 50.5; Hatcher down 31.3; Hunnicutt rises at 69.5 and is hit at 71.2, lies;
+//             two poncho litters (two bearers at the ends, two relief men; sl3 and pc2) toward the LZ, from 87 and 98;
+//             Brown still where he fell (also in 8-10)
 //   8  1900   dusk: a file of 30 with four poncho litters and a walking wounded, about 3 m apart, goes down the withdrawal lane, fading out past
 //             the LZ by 87; Hunnicutt leaves his crater, Low Crawl 9-50 to Himmer, kneels 50.5 and stays
 //   9  0100   Himmer still, breathing; Hunnicutt beside him low; prone at 12.3 and 35.3 facing the slit; his shots (fire.js)
@@ -287,6 +291,11 @@
       const o = { key: c.key, c, F, f, mesh: F.mesh, fade: fm, blob: ctx.blob(0.42), seg: -1, plan: null, last: -1, skip: 0, acc: 0,
         head: new THREE.Vector3(), ant: new THREE.Vector3(), antOk: false, rifleG: null, alpha: 1 };
       fig[c.key] = o; figs.push(o);
+      // the floor under him: the ground, or this segment's floor (E.floor, set each frame); a still man (seg.still: the
+      // dead) has the motion layer's life switched off (f.raw: no breath, no face, no glances, no kit sway; the ground
+      // contact stays on through rawRoot)
+      f.ground = (x, z) => (o.floor !== undefined ? o.floor : ground(x, z));
+      f.o.rawRoot = true;
     }
     // officers on the net take the handset when their radioman is within 3 m (clay-v3/motion.js f.lendTo)
     if (fig.rtoH) fig.rtoH.f.lendTo = [fig.himmer && fig.himmer.f, fig.connelly && fig.connelly.f].filter(Boolean);
@@ -336,37 +345,95 @@
     const CROUCH = (key) => (rifle(key) ? 'Idle Crouching' : 'Crouch Idle 02 Looking Around');
 
     // ---- chapters 1-3: in reserve on the W-SW arc of 689's perimeter ----
-    const holes = (W && W.holes && W.holes.length ? W.holes.map((h) => ({ x: h.pos.x, z: h.pos.z, ox: h.out.x, oz: h.out.z })) : Array.from({ length: 36 }, (_, i) => { const p = S.perimeter.at(i * 10); return { x: p.x, z: p.z, ox: Math.sin(i * 10 * DEG), oz: -Math.cos(i * 10 * DEG) }; }))
-      .map((h) => Object.assign(h, { b: bearing(h.x, h.z) })).filter((h) => h.b >= 228 && h.b <= 300).sort((a, b) => a.b - b.b);
-    const RES = {};   // key -> { at, yaw, act, sub }
+    // (fix pass, seats) no man sits on nothing: Sitting Idle's seat is WORKS.SEAT_H (0.40 m) above his soles, so a man
+    // who sits sits on a hole's rear lip with his legs in the hole (his floor 0.40 below the lip) or on an ammunition
+    // box (WORKS.seat 'box'); the man in a hole stands in it, sunk 0.5 as marines-a-d's sentries are
+    const holes = (W && W.holes && W.holes.length ? W.holes.map((h) => ({ i: h.i, x: h.pos.x, z: h.pos.z, ox: h.out.x, oz: h.out.z, seat: h.seat ? [h.seat.x, h.seat.z] : null, seatYaw: h.seatYaw })) : Array.from({ length: 36 }, (_, i) => { const p = S.perimeter.at(i * 10); return { x: p.x, z: p.z, ox: Math.sin(i * 10 * DEG), oz: -Math.cos(i * 10 * DEG) }; }))
+      .map((h) => Object.assign(h, { b: bearing(h.x, h.z) }));
+    // the holes marines-a-d's sentries take (its pickHole, in its order), so no two men stand in one hole
+    const adHoles = new Set();
+    for (const b of [165, 190, 212, 236, 262, 300, 130, 25]) {
+      let best = -1, bd = 1e9;
+      holes.forEach((h, j) => { if (adHoles.has(j)) return; const hb = ((Math.atan2(h.x, -h.z) / DEG) + 360) % 360, d = Math.abs(wrapA((hb - b) * DEG)); if (d < bd) { bd = d; best = j; } });
+      adHoles.add(best);
+    }
+    const arc = holes.filter((h, j) => !adHoles.has(j) && h.b >= 228 && h.b <= 300).sort((a, b) => a.b - b.b);
+    const RES = {};   // key -> { at, yaw, act, floor }
+    const SEAT_H = (W && W.SEAT_H) || 0.4, HOLE_SINK = 0.5;
+    const usedHoles = [];
+    // a box is 0.40 high for every man; his seat is 0.40 x his scale: only a man of scale 0.99 or more sits on one, his
+    // soles sunk the difference (at most about 2 cm) into the dirt so his hips meet the lid
+    const boxOk = (key) => fig[key].f.scale >= 0.99;
+    const boxSeat = (p, yaw, key) => {
+      try { if (W && W.seat) W.seat(p[0], p[1], yaw, 'box'); } catch (e) { console.warn(NAME + ': WORKS.seat', e.message); }
+      return gy(p[0], p[1]) - SEAT_H * (fig[key].f.scale - 1);
+    };   // his soles on the ground beside the box
     {
       const ridge = xz(S.battleSummit);
       let k = 0;
       const men = CAST.map((c) => c.key).filter((k2) => !['himmer', 'rtoH', 'connelly', 'corpsman', 'cahill', 'rtoC'].includes(k2));
       const take = () => men[k++];
-      // two men at each hole: one kneeling in it facing out, one sitting just inside
-      for (const h of holes) {
-        const a = take(), b = take(); if (!b) break;
-        RES[a] = { at: [h.x, h.z], yaw: Math.atan2(h.ox, h.oz), act: 'kneel' };
-        RES[b] = { at: [h.x - h.ox * 2.0 + h.oz * 0.9, h.z - h.oz * 2.0 - h.ox * 0.9], yaw: Math.atan2(h.ox, h.oz) + 1.9, act: 'sit' };
-      }
+      // a man standing in each hole facing out (sunk 0.5); at every third hole his mate sits on the rear lip, legs in
+      // the hole, half a metre along it so the two do not share a place
+      arc.forEach((h, j) => {
+        const a = take(); if (!a) return;
+        const sx = -h.oz, sz = h.ox;   // along the hole
+        const pa = [h.x + sx * 0.45 + h.ox * 0.1, h.z + sz * 0.45 + h.oz * 0.1];
+        RES[a] = { at: pa, yaw: Math.atan2(h.ox, h.oz) + (H(j, 2) - 0.5) * 0.5, act: 'hole', floor: gy(pa[0], pa[1]) - HOLE_SINK };
+        if (h.i !== undefined) usedHoles.push(h.i);
+        if (j % 3 !== 1 || !h.seat) return;
+        const b = take(); if (!b) return;
+        const pb = [h.seat[0] - sx * 0.35, h.seat[1] - sz * 0.35];
+        const lip = W && W.seat ? W.seat(pb[0], pb[1], h.seatYaw, 'lip') : { sink: SEAT_H };
+        RES[b] = { at: pb, yaw: h.seatYaw, act: 'sit', floor: gy(pb[0], pb[1]) - lip.sink * fig[b].f.scale };   // the seat scales with the man (measured: hips - 0.03 = 0.40 x scale)
+      });
       // the company's spot: Himmer, his radioman, Connelly; the corpsman sitting behind
       const hb = 256, hp = rIn(hb, 13);
       RES.himmer = { at: hp, yaw: yawTo(hp[0], hp[1], ridge[0], ridge[1]), act: 'cpt' };
       RES.rtoH = { at: [hp[0] + 1.3, hp[1] + 0.6], yaw: yawTo(hp[0] + 1.3, hp[1] + 0.6, hp[0], hp[1]) + 0.6, act: 'rto' };
       RES.connelly = { at: [hp[0] - 1.1, hp[1] + 1.2], yaw: yawTo(hp[0] - 1.1, hp[1] + 1.2, hp[0], hp[1]), act: 'stand' };
-      RES.corpsman = { at: rIn(hb + 6, 17), yaw: 0.4, act: 'sit' };
+      { const pc = rIn(hb + 6, 17), yc = yawTo(pc[0], pc[1], hp[0], hp[1]); RES.corpsman = boxOk('corpsman') ? { at: pc, yaw: yc, act: 'sit', floor: boxSeat(pc, yc, 'corpsman') } : { at: pc, yaw: yc, act: 'kneel' }; }
       // lookers: watching the far ridge from just inside the line
       for (const b of [234, 247, 262, 279]) { const m = take(); if (!m) break; const p = rIn(b, 3.2); RES[m] = { at: p, yaw: yawTo(p[0], p[1], ridge[0], ridge[1]), act: 'look' }; }
       // three walking inside the line, back and forth on a 30 s beat
       for (const [b0, b1, d] of [[236, 252, 9], [258, 276, 11], [270, 288, 7]]) { const m = take(); if (!m) break; RES[m] = { at: rIn(b0, d), to: rIn(b1, d), act: 'walk' }; }
-      // the rest sitting and crouching in twos and threes further in
+      // the rest further in, in twos and threes: on ammunition boxes (facing along the slope, so the feet are level
+      // with the seat's ground), kneeling or crouched; nobody sits on the bare ground
       let i = 0;
+      const boxes = [];
       while (k < men.length) {
         const m = take(), b = 232 + (i * 11.3) % 62, d = 8 + (i % 3) * 3.4 + H(i, 3) * 2, p = rIn(b, d);
-        RES[m] = { at: p, yaw: H(i, 7) * TAU, act: i % 4 === 3 ? 'crouch' : i % 5 === 2 ? 'stand' : 'sit' };
+        let act = i % 4 === 3 ? 'crouch' : i % 5 === 2 ? 'stand' : i % 3 === 1 ? 'kneel' : 'sit';
+        if (act === 'sit' && !boxOk(m)) act = i % 2 ? 'kneel' : 'crouch';
+        let yaw = H(i, 7) * TAU, at = p;
+        if (act === 'sit') {
+          // the box where the ground is level enough that both feet (heels and toes, 0.34-0.44 x scale ahead, 0.16 to
+          // each side) are within a few centimetres of his soles' floor, facing roughly along the ring. The arc's slope
+          // is 40-65 % from 15 m out (measured), so the boxes stand on the gentler crown, 9-17 m from the CP, on his
+          // bearing (+-8 degrees), a box's length from any other; where none fits, he kneels instead
+          const sc = fig[m].f.scale, y0 = (180 - b + (i % 2 ? 90 : -90)) * DEG;
+          let best = 1e9;
+          for (let rr = 9; rr <= 17; rr += 1) for (let db = -8; db <= 8; db += 2) {
+            const c = [cp.x + Math.sin((b + db) * DEG) * rr, cp.z - Math.cos((b + db) * DEG) * rr], fl = gy(c[0], c[1]) - SEAT_H * (sc - 1);
+            if (boxes.some((q) => Math.hypot(q[0] - c[0], q[1] - c[1]) < 1.6)) continue;
+            for (let da = -1.4; da <= 1.4; da += 0.1) {
+              const yy = y0 + da, fx = Math.sin(yy), fz = Math.cos(yy);
+              let e = 0;
+              for (const [fw, sd] of [[0.34, 0.16], [0.34, -0.16], [0.44, 0.16], [0.44, -0.16]]) {
+                const g = gy(c[0] + (fx * fw + fz * sd) * sc, c[1] + (fz * fw - fx * sd) * sc) - fl;
+                e = Math.max(e, g < 0 ? -g * 2 : g);   // a hanging foot costs double a foot in the grass
+              }
+              const cost = e + Math.abs(da) * 0.002 + Math.abs(db) * 0.0005;
+              if (cost < best) { best = cost; yaw = yy; at = c; }
+            }
+          }
+          if (best > 0.04) act = 'kneel'; else boxes.push(at);
+        }
+        RES[m] = { at, yaw, act };
+        if (act === 'sit') RES[m].floor = boxSeat(at, yaw, m);
         i++;
       }
+      if (W && W.vacate && usedHoles.length) W.vacate(usedHoles);
       // Cahill and his radioman at the CP (only shown here if marines-a-d has not placed him)
       RES.cahill = { at: [cp.x + 1.0, cp.z + 2.2], yaw: Math.PI, act: 'cpt' };
       RES.rtoC = { at: [cp.x + 2.3, cp.z + 2.8], yaw: Math.PI + 0.5, act: 'rto' };
@@ -377,7 +444,8 @@
       p.seam = false;
       switch (R.act) {
         case 'kneel': p.hold(L, KNEEL(key)); break;
-        case 'sit': p.hold(L, 'Sitting Idle'); break;
+        case 'hole': p.hold(L, STAND(key), { floor: R.floor }); break;
+        case 'sit': p.hold(L, 'Sitting Idle', { floor: R.floor }); break;
         case 'crouch': p.hold(L, CROUCH(key)); break;
         case 'stand': p.hold(L, STAND(key)); break;
         case 'look': p.hold(L, ch === 1 ? STAND(key) : 'Looking Around'); break;
@@ -420,8 +488,9 @@
       const d0 = Math.hypot(start[0] - gate[0], start[1] - gate[1]);
       const leave = key === 'cahill' || key === 'rtoC' ? p.t : Math.max(p.t, 8 + (d0 / 30) * 3 + H(i, 5) * 5);
       const idle = R.act === 'sit' ? 'Sitting Idle' : R.act === 'kneel' ? KNEEL(key) : R.act === 'crouch' ? CROUCH(key) : STAND(key);
-      if (R.act === 'walk') p.hold(leave, STAND(key)); else p.hold(leave, idle);
-      if (R.act === 'sit' || R.act === 'kneel') p.hold(leave + 1.4, STAND(key), { fade: 1.0 });
+      // a seated man or a man in a hole keeps his floor (seg.floor) until he walks; the walk eases him up from it (evalSeg)
+      if (R.act === 'walk') p.hold(leave, STAND(key)); else p.hold(leave, idle, { floor: R.floor });
+      if (R.act === 'sit' || R.act === 'kneel') p.hold(leave + 1.4, STAND(key), { fade: 1.0, floor: R.act === 'sit' && R.floor < gy(R.at[0], R.at[1]) - 0.05 ? R.floor : undefined });
       const pts = [gate, xz(S.perimSW)].concat(formPts.slice(1));
       p.go('Walk With Rifle', pts, key === 'cahill' || key === 'rtoC' ? 1.0 : 1.15);
       const down = xz(S.crossing.from);
@@ -479,6 +548,12 @@
     // and 0.8 m south of the fall point), so the corporal is at his shoulder, not on his legs
     const HIM_YAW = (Math.atan2(-1.0, 0.8) - 1.05) - headYaw;
     const FALL = { himmer: 21.0, pc1: 21.6, sl1: 22.0, pc2: 22.4, psgt: 23.1, sl3: 24.3, brown: 35.0 };
+    // Abram's ruling (2026-11-09): men the record says were killed lie still; men it calls wounded breathe. Of these falls
+    // only PFC Brown is recorded killed (research.md 3: KIA 16 Apr, DU); Himmer, both platoon commanders, the platoon
+    // sergeant and the squad leaders "fell with wounds" (DY p. 315, Q7). The dead are left where they fell, never carried.
+    const KILLED = { brown: true };
+    const DEAD = { still: true, lie: true, down: true, time: DUR('Dying (1)') };   // clipTime clamps a one-shot to its last frame
+    const deadPlan = (key, L) => { const e = L6[key]; const p = new Plan(e.at, e.yaw).hold(L, 'Dying (1)', DEAD).end(L); p.seam = false; return p; };
     // (works.js's horseshoe reaches down to the pause: bunkers at about along 0.5 side 2.5 and along 2.6 side 10.7, so the
     // rush stops just short of them; the six go on into the crater beside the next bunker up)
     const RUSH = { himmer: xz(S.himmerFall), pc1: AS(-3.6, 4.8), sl1: AS(-3.0, 15.8), psgt: AS(-4.6, 12.6), sl2: AS(-1.0, 16.5), r0: AS(0.4, 19), r1: AS(-2.2, 18.4), r2: AS(1.0, 21), r3: AS(-1.6, 14.0), r4: AS(-0.2, 17.4) };
@@ -523,7 +598,7 @@
         p = new Plan(a0, yawTo(a0[0], a0[1], up6[0], up6[1]));
         p.hold(2.5, KNEEL(key)).go('Rifle Crouch Walk', [mid], 1.0, { until: 13.2 }).hold(14.2 + H(p1i, 3) * 0.6, KNEEL(key), { face: up6 });
         p.go('Rifle Run', [RUSH[key] || AS(1, sd)], 1.7, { until: 19.6 }).hold(FALL[key] || 21.4 + H(p1i, 5), CROUCH(key), { face: xz(S.secondPosition) });
-        if (FALL[key]) p.hold(FALL[key] + 3.2, 'Dying (1)', { fade: 0.35 }).hold(L, key === 'psgt' ? 'Sitting Idle' : 'Laying Breathless', { fade: 1.4, lie: true });
+        if (FALL[key]) p.hold(FALL[key] + 3.2, 'Dying (1)', { fade: 0.35 }).hold(L, 'Laying Breathless', { fade: 1.4, lie: true });
         else {
           const j = SIX.indexOf(key), c = inCrater(sixC, j, 6, 2.1);
           p.go('Rifle Run', [c], 2.0).hold(L, j % 2 ? 'Crouch Idle 02 Looking Around' : 'Idle Crouching', { face: xz(S.secondPosition), fade: 0.6 });
@@ -538,8 +613,11 @@
         const a0 = AS(-26, sd), mid = AS(-19, sd);
         p = new Plan(a0, yawTo(a0[0], a0[1], up6[0], up6[1]));
         p.hold(3 + H(sd, 4), KNEEL(key)).go('Rifle Crouch Walk', [mid], 0.9, { until: 14.5 + H(sd, 5) }).hold(Math.min(FALL[key] || 99, 20.2 + H(sd, 6) * 2.5), 'Rifle Kneel Idle', { face: up6 });
-        if (FALL[key]) {
-          p.hold(FALL[key] + 3.2, 'Dying (1)', { fade: 0.35 }).hold(L, key === 'pc2' ? 'Sitting Idle' : 'Laying Breathless', { fade: 1.4, lie: true });
+        if (KILLED[key]) {
+          // PFC Brown, killed (DU): a gentle fall, then still: the fall's last frame held, no breath (seg.still)
+          p.hold(FALL[key] + DUR('Dying (1)') - 0.05, 'Dying (1)', { fade: 0.35 }).hold(L, 'Dying (1)', DEAD);
+        } else if (FALL[key]) {
+          p.hold(FALL[key] + 3.2, 'Dying (1)', { fade: 0.35 }).hold(L, 'Laying Breathless', { fade: 1.4, lie: true });
         } else if (key === 'hunnicutt') {
           const pc2 = AS(-19, 18), by = AS(-18.0, 17.0);
           p.hold(24, 'Prone Idle', { face: xz(S.secondPosition), fade: 0.7 }).go('Rifle Crouch Walk', [by], 1.0, { until: 26.2 }).hold(28.6, 'Kneeling Down', { face: pc2, fade: 0.4 })
@@ -582,13 +660,15 @@
       } else return NOPE;
       p.end(L);
       const last = p.segs[p.segs.length - 1];
-      L6[key] = { at: [p.x, p.z], yaw: p.yaw, clip: last.clip, lie: last.lie };
+      L6[key] = { at: [p.x, p.z], yaw: p.yaw, clip: last.clip, lie: last.lie, still: last.still };
       return p;
     }
 
     // ---- chapter 7: pinned; Cahill to the LZ; the withdrawal order; carrying out the wounded ----
     const czlz = xz(S.czlz);
-    const STRETCH7 = [{ a: 'r13', b: 'r14', w: 'sl3', t: 99.5 }, { a: 'r15', b: 'r22', w: 'brown', t: 101.5 }];
+    // (the second litter carried PFC Brown until Abram's ruling of 2026-11-09: he was killed, and the dead were left; it
+    // now carries the 2d Platoon's commander, wounded)
+    const STRETCH7 = [{ a: 'r13', b: 'r14', w: 'sl3', t: 99.5 }, { a: 'r15', b: 'r22', w: 'pc2', t: 101.5 }];
     // A poncho litter (fix pass, carries): two bearers at the ends, the front man with his hands behind him on the
     // front corners, the rear man with his in front of him on the rear corners, at hip height (CM.grip), rifles slung;
     // two relief bearers walk ahead and behind. Side-by-side bearers were tried first: on the lane's steep cross-slopes
@@ -656,6 +736,7 @@
       for (const c of CAST) {
         const k = c.key, e = E(k);
         if (!L6[k]) continue;
+        if (KILLED[k]) { plans[k] = deadPlan(k, L); continue; }
         const p = new Plan(e.at, e.yaw);
         if (k === 'cahill') {
           const route = [AS(-14, -16), AS(-30, -18), toward(czlz, AS(-30, -18), 6)];
@@ -668,7 +749,7 @@
             .hold(95, 'Looking Around', { face: czlz }).hold(110.5, 'Talking On Phone', { fade: 0.6 }).hold(L, 'Looking Around');
         } else if (k === 'hunnicutt') {
           const rim = toward(e.at, sec, 1.3);
-          p.hold(69.5, e.clip).hold(70.2, 'Rifle Idle', { fade: 0.6, face: sec }).go('Walk With Rifle', [rim], 1.0, { until: 71.4 }).hold(L, 'Sitting Idle', { fade: 0.7, face: hunC });
+          p.hold(69.5, e.clip).hold(70.2, 'Rifle Idle', { fade: 0.6, face: sec }).go('Walk With Rifle', [rim], 1.0, { until: 71.4 }).hold(L, 'Laying Breathless', { fade: 0.9, face: hunC, lie: true });
           p.flinch.push(71.2);
         } else if (k === 'rider' || k === 'r20' || k === 'r21') {
           const j = ['rider', 'r20', 'r21'].indexOf(k), dst = AS(-2 + j * 1.5, 33 + j * 1.8);
@@ -681,7 +762,7 @@
           p.flinch.push(50.5);
           fireAt(p, k, 40, 49, 4, nearSlits[0] || second);
         } else if (k === 'hatcher') {
-          p.hold(31.3, 'Rifle Kneel Idle').hold(34.5, 'Dying (1)', { fade: 0.35 }).hold(L, 'Sitting Idle', { fade: 1.4, lie: true });
+          p.hold(31.3, 'Rifle Kneel Idle').hold(34.5, 'Dying (1)', { fade: 0.35 }).hold(L, 'Laying Breathless', { fade: 1.4, lie: true });
           p.flinch.push(31.2);
           fireAt(p, k, 4, 30, 10, nearSlits[1] || second);
         } else if (k === 'corpsman') {
@@ -740,7 +821,7 @@
       // the file (fix pass, spacing and carries): about 3 m man to man (2.4-3.6), a litter and its two relief men taking 6.8 m with
       // a man's gap before and after; four bearers to a litter (the two of chapter 7 and two more); the whole file at
       // the litters' pace, 0.78 m/s; started far enough down the lane that its tail fades out past the LZ by about 88
-      const FILE = ['r5', ['r13', 'sl3', 'r14', 'r6', 'r7'], 'hatcher', 'r8', ['r15', 'brown', 'r22', 'r9', 'r10'], 'connelly', 'rtoH',
+      const FILE = ['r5', ['r13', 'sl3', 'r14', 'r6', 'r7'], 'hatcher', 'r8', ['r15', 'pc2', 'r22', 'r9', 'r10'], 'connelly', 'rtoH',
         ['r23', 'psgt', 'r24', 'r11', 'r12'], 'corpsman', 'r0', ['r25', 'pc1', 'r26', 'r1', 'r2'], 'sl2', 'r3', 'r4'];
       const v = 0.78, fadeAt = czS + 44;
       const fadeOut = (o, t, s) => 1 - sm((s - fadeAt) / 6);
@@ -775,7 +856,7 @@
         const e = L6.hunnicutt ? L6.hunnicutt.at : inCrater(hunC, 4, 5, 1.6), fall = xz(S.himmerFall);
         const beside = [fall[0] - 0.9, fall[1] + 0.75];
         const p = new Plan(e, yawTo(e[0], e[1], fall[0], fall[1]));
-        p.hold(8, 'Sitting Idle').hold(9.2, 'Prone Idle', { face: fall, fade: 1.0 }).go('Low Crawl', [toward(beside, e, 1.2)], 0.45, { until: 49, ramp: 1.2 })
+        p.hold(8, 'Laying Breathless', { lie: true }).hold(9.2, 'Prone Idle', { face: fall, fade: 1.0 }).go('Low Crawl', [toward(beside, e, 1.2)], 0.45, { until: 49, ramp: 1.2 })
           .hold(50.5, 'Prone Idle', { fade: 0.8 }).hold(53.6, 'Kneeling Down', { face: fall, fade: 0.8 }).hold(L, 'Rifle Kneel Idle', { face: fall, fade: 0.6 });
         plans.hunnicutt = p.end(L);
       }
@@ -785,6 +866,7 @@
       plans.himmer = new Plan(xz(S.himmerFall), L6.himmer ? L6.himmer.yaw : 0).hold(L, 'Laying Breathless', { lie: true }).end(L);
       plans.himmer.seam = false;
       plans.panykaninec = panyPlan(L);
+      for (const k in KILLED) plans[k] = deadPlan(k, L);   // the dead stay where they fell
       return plans;
     }
 
@@ -805,6 +887,7 @@
       p.seam = false;
       plans.hunnicutt = p.end(L);
       plans.panykaninec = panyPlan(L);
+      for (const k in KILLED) plans[k] = deadPlan(k, L);
       return plans;
     }
     const coverP = toward(fallP, xz(S.dawnCover), 12.4);
@@ -841,6 +924,7 @@
       pU.alphaFn = (tt) => 1 - sm((tt - 72.5) / 3.2);
       pU.glances.push({ t0: t + 0.5, t1: t + 3.4, x: coverP[0], z: coverP[1] });
       plans.himmer = pH.end(L); plans.hunnicutt = pU; plans.panykaninec = panyPlan(L);
+      for (const k in KILLED) plans[k] = deadPlan(k, L);
       return plans;
     }
     function ch11Plans() {
@@ -902,6 +986,10 @@
           E.yaw = lerpA(seg.yaw0, y, sm(tau / 0.6));
         }
       }
+      // his floor (fix pass, seats): a seated man's soles go to seg.floor (a hole's lip less WORKS.SEAT_H, or the ground
+      // by his box), a man in a hole stands on its floor; the segment after eases him up to the ground over 1.2 s
+      const pf = seg.prev && seg.prev.floor;
+      E.floor = seg.floor !== undefined ? seg.floor : pf !== undefined && tau < 1.2 ? pf + (ground(E.x, E.z) - pf) * sm(tau / 1.2) : undefined;
       const lf = seg.lift;
       E.lift = !lf ? 0 : typeof lf === 'number' ? lf : lf.a + (lf.b - lf.a) * sm((t - lf.t0) / (lf.t1 - lf.t0));
     }
@@ -962,7 +1050,7 @@
           o.rifleG = { p: new THREE.Vector3(px, ground(px, pz) + 0.03 * f.scale, pz), q };
         }
         if (f.drop && !f.drop.patched) { f.drop.p1.copy(o.rifleG.p); f.drop.q1.copy(o.rifleG.q); f.drop.patched = true; }
-        if (seg.clip === 'Dying (1)') return;   // the fall lets go and settles it there itself
+        if (seg.clip === 'Dying (1)' && !seg.still) return;   // the fall lets go and settles it there itself; once he is still it stays where it settled
         _m.compose(o.rifleG.p, o.rifleG.q, _s.set(1, 1, 1).multiplyScalar(f.scale));
       }
       const inv = _m.clone(); void inv;
@@ -1077,7 +1165,17 @@
         F.root.visible = true;
         if (a < 0.997) { if (o.mesh.material !== o.fade) o.mesh.material = o.fade; o.fade.opacity = a; }
         else if (o.mesh.material !== mat) o.mesh.material = mat;
-        f.x = E.x; f.z = E.z; f.yaw = E.yaw;
+        // crowd separation (clay-v3/motion.js CM.crowd*, fix pass hill689): a moving man steps round the others; a litter
+        // party (bearers, relief men and the man on it) does not push itself apart
+        {
+          const st = o.crowd || (o.crowd = { ox: 0, oz: 0 });
+          if (jumped) st.ox = st.oz = 0;
+          const mov = seg.k === 'move' && !seg.carried, grp = p.lit || null, vx = Math.sin(E.yaw), vz = Math.cos(E.yaw);
+          if (mov && CM.crowdOffset) CM.crowdOffset(tAbs, dt, 'c' + o.key, E.x, E.z, vx, vz, grp, st);
+          if (CM.crowdAdd) CM.crowdAdd(tAbs, 'c' + o.key, E.x + st.ox, E.z + st.oz, seg.lie || seg.down || seg.carried ? 0.9 : 0.4, mov, mov ? vx : 0, mov ? vz : 0, grp);
+          E.x += st.ox; E.z += st.oz;
+        }
+        f.x = E.x; f.z = E.z; f.yaw = E.yaw; o.floor = E.floor; f.raw = !!seg.still;
         // the clip
         const seamJump = wrapped && (p.seam || (o.seg !== i && seg.clip !== f.cur));
         if (jumped || seamJump || show || o.needReset) { hardReset(o, seg, t); o.rifleG = null; o.needReset = false; }
@@ -1112,7 +1210,7 @@
           if (E.lift) { F.root.position.y += E.lift; F.root.updateMatrixWorld(true); }
           if (o.c.kind === 'radioman') { const r = CM.radioPoints(f); if (r) { o.ant.copy(r.antennaTip); o.antOk = true; } }
         } else {
-          F.root.position.set(f.x, ground(f.x, f.z) + (f.lift || 0) + (E.lift || 0), f.z); F.root.rotation.y = f.yaw;
+          F.root.position.set(f.x, f.ground(f.x, f.z) + (f.lift || 0) + (E.lift || 0), f.z); F.root.rotation.y = f.yaw;
         }
         f.b.mixamorigHead.getWorldPosition(o.head);
         o.blob.set(f.x, gy(f.x, f.z), f.z, seg.lie ? 1.7 : E.lift ? 0.6 : 1);

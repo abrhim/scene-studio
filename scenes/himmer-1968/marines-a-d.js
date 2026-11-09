@@ -159,7 +159,7 @@
       ctx.scene.add(F.root);
       const A = { key, kind, seed, group, idx: actors.length, F, plans: {}, L: {}, seam: {}, ghosts: {}, over: {}, fire: [], vis: false, sink: 0, acc: 0, head: v3(0, 0, 0), tip: v3(0, 0, 0) };
       A.f = CM.figure(F, { seed, x: 0, z: 0, yaw: 0, vary: true, mood: 'alert', ground: (x, z) => G(x, z) - A.sink });
-      A.f.o.pinned = true;
+      A.f.o.pinned = true; A.f.o.rawRoot = true;   // a still (dead) man: f.raw switches off his life, the ground contact stays
       A.scale = A.f.scale; A.stride = A.f.v.stride; A.phase = A.f.v.phase;
       A.slotA = {}; A.slotB = {};
       A.blob = ctx.blob(0.55 * A.scale);
@@ -190,7 +190,7 @@
     // officers on the net take their radioman's handset when he is within 3 m (clay-v3/motion.js f.lendTo)
     CAHR.f.lendTo = [CAH.f]; CPR.f.lendTo = [HZ.f, DN.f, EN.f];
     // the sentries
-    const SEN = []; for (let i = 0; i < 10; i++) SEN.push(actor(null, 'rifleman', 4409 + i * 7, 0, 'S'));
+    const SEN = []; for (let i = 0; i < 24; i++) SEN.push(actor(null, 'rifleman', 4409 + i * 7, 0, 'S'));
 
     // ---------- step builder ----------
     // A plan is a list of steps, each lasting until the next: H hold a clip, W walk a path, O a one-shot, X hidden,
@@ -203,7 +203,7 @@
         pathAt(s.path, d, out);
         const py = s.yawFixed !== undefined ? s.yawFixed : pathYaw(s.path, d) + (s.rev ? Math.PI : 0);
         out.yaw = tau < s.dur ? turnTo(s.yawFrom, py, tau, s.turn) : turnTo(s.endYaw, s.stopYaw !== undefined ? s.stopYaw : s.endYaw, tau - s.dur);
-        out.sink = s.sink + (s.sinkIn ? 1.9 * (1 - sm((d - s.d0) / 3)) : 0) + (s.sinkOut ? 1.9 * sm((d - (s.d1 - 3)) / 3) : 0);
+        out.sink = (s.sinkFrom !== undefined ? s.sinkFrom + (s.sink - s.sinkFrom) * sm((d - s.d0) / 1.5) : s.sink) + (s.sinkIn ? 1.9 * (1 - sm((d - s.d0) / 3)) : 0) + (s.sinkOut ? 1.9 * sm((d - (s.d1 - 3)) / 3) : 0);
         out.d = d;
       } else if (s.type === 'C') {
         conveyorPos(s, t, out);
@@ -226,7 +226,7 @@
     }
     function Plan(Ac, ch, L, x, z, yaw, clip, o) {
       o = o || {};
-      const steps = [{ type: 'H', t0: 0, clip, x, z, yaw, yawFrom: yaw, sink: o.sink || 0, ct0: (o.ct0 !== undefined ? o.ct0 : Ac.phase * DUR[clip]), rate: 1, fade: FADE }];
+      const steps = [{ type: 'H', t0: 0, clip, x, z, yaw, yawFrom: yaw, sink: o.sink || 0, ct0: (o.ct0 !== undefined ? o.ct0 : Ac.phase * DUR[clip]), rate: 1, fade: FADE, freeze: !!o.freeze }];
       Ac.plans[ch] = steps; Ac.L[ch] = L;
       const P = {
         steps,
@@ -234,9 +234,12 @@
         hold(t0, clip2, o2) {
           o2 = o2 || {}; const p = P.at(t0);
           steps.push({ type: 'H', t0, clip: clip2, x: o2.x !== undefined ? o2.x : p.x, z: o2.z !== undefined ? o2.z : p.z, yaw: o2.yaw !== undefined ? o2.yaw : p.yaw, yawFrom: p.yaw,
-            sink: o2.sink !== undefined ? o2.sink : (p.sink > 1.5 ? 0 : p.sink), ct0: o2.ct0 !== undefined ? o2.ct0 : Ac.phase * DUR[clip2], rate: o2.rate || 1, fade: o2.fade || FADE, turn: o2.turn });
+            sink: o2.sink !== undefined ? o2.sink : (p.sink > 1.5 ? 0 : p.sink), ct0: o2.ct0 !== undefined ? o2.ct0 : Ac.phase * DUR[clip2], rate: o2.rate || 1, fade: o2.fade || FADE, turn: o2.turn, freeze: !!o2.freeze });
+          if (o2.dead) (Ac.deadAt = Ac.deadAt || {})[ch] = t0 + (o2.fade || FADE);
           return P;
         },
+        // drop every step from t on (a man hit mid-rush stops where he is)
+        cut(t) { const k = steps.findIndex((st, j) => j > 0 && st.t0 >= t); if (k > 0) steps.length = k; return P; },
         once(t0, clip2, o2) {
           o2 = o2 || {}; const p = P.at(t0);
           steps.push({ type: 'O', t0, clip: clip2, x: p.x, z: p.z, yaw: o2.yaw !== undefined ? o2.yaw : p.yaw, yawFrom: p.yaw, sink: p.sink > 1.5 ? 0 : p.sink, rate: o2.rate || 1, fade: o2.fade || 0.3,
@@ -254,7 +257,7 @@
           const rate = o2.rate || (V0[clip2] ? v / (V0[clip2] * Ac.scale * (clip2 === 'Low Crawl' ? 1 : Ac.stride)) : 1);
           const dur = Math.max(0.01, (d1 - d0) / v);
           const s = { type: 'W', t0, clip: clip2, path, d0, d1, v, rate, dur, rev: !!o2.rev, yawFixed: o2.yawFixed, yawFrom: p.yaw, turn: o2.turn || 0.6, sink: o2.sink !== undefined ? o2.sink : (p.sink > 1.5 ? 0 : p.sink),
-            sinkIn: !!o2.sinkIn, sinkOut: !!o2.sinkOut, stop: o2.stop || (clip2 === 'Low Crawl' ? 'Prone Idle' : 'Rifle Idle'), stopYaw: o2.stopYaw, fade: o2.fade || FADE, ct0: Ac.phase * DUR[clip2] };
+            sinkIn: !!o2.sinkIn, sinkOut: !!o2.sinkOut, sinkFrom: o2.sinkFrom, stop: o2.stop || (clip2 === 'Low Crawl' ? 'Prone Idle' : 'Rifle Idle'), stopYaw: o2.stopYaw, fade: o2.fade || FADE, ct0: Ac.phase * DUR[clip2] };
           const end = pathAt(path, d1, { x: 0, z: 0 });
           s.endYaw = s.yawFixed !== undefined ? s.yawFixed : pathYaw(path, d1) + (s.rev ? Math.PI : 0);
           s.stopCt0 = Ac.phase * DUR[s.stop];
@@ -263,6 +266,8 @@
           P.endsAt = t0 + dur;
           return P;
         },
+        // a man the record says was killed: a gentle fall, its last frame held, still from then on (Abram, 2026-11-09)
+        die(t0, clip2) { P.once(t0, clip2 || 'Dying (1)', { ghost: true }); (Ac.deadAt = Ac.deadAt || {})[ch] = t0 + DUR[clip2 || 'Dying (1)'] - 0.25; return P; },
         hide(t0) { const p = P.at(t0); steps.push({ type: 'X', t0, x: p.x, z: p.z, yaw: p.yaw, yawFrom: p.yaw, sink: 0, clip: 'Rifle Idle', ct0: 0, fade: 0 }); return P; },
         flinch(t0, dur) { (Ac.over[ch] = Ac.over[ch] || []).push({ t0, dur: dur || 1.7, clip: Ac.kind === 'rifleman' ? 'Idle Crouching' : 'Crouch Idle 02 Looking Around', flinch: true }); return P; },
         gesture(t0, dur, clip2) { (Ac.over[ch] = Ac.over[ch] || []).push({ t0, dur, clip: clip2 }); return P; },
@@ -273,7 +278,7 @@
     const hidden = (Ac, ch, L) => { Ac.plans[ch] = [{ type: 'X', t0: 0, x: 0, z: 0, yaw: 0, yawFrom: 0, sink: 0, clip: 'Rifle Idle', ct0: 0 }]; Ac.L[ch] = L; };
 
     // ---------- evaluation (allocation-free) ----------
-    function mkState() { return { x: 0, z: 0, yaw: 0, sink: 0, hidden: false, n: 0, clips: ['', '', '', '', '', '', '', ''], cts: new Float32Array(8), ws: new Float32Array(8), ghost: null, d: 0 }; }
+    function mkState() { return { x: 0, z: 0, yaw: 0, sink: 0, hidden: false, n: 0, clips: ['', '', '', '', '', '', '', ''], cts: new Float32Array(8), ws: new Float32Array(8), ghost: null, d: 0, still: false }; }
     const S1 = mkState(), S2 = mkState(), SP = { x: 0, z: 0, yaw: 0, sink: 0, d: 0 };
     const loopT = (clip, ct) => { const d = DUR[clip]; return ((ct % d) + d) % d; };
     const onceT = (clip, ct) => clamp(ct, 0, DUR[clip] - 0.034);
@@ -286,7 +291,7 @@
     function layers(Ac, s, t, S, w) {
       const tau = t - s.t0;
       switch (s.type) {
-        case 'H': addLayer(S, s.clip, /^Dying/.test(s.clip) ? DUR[s.clip] - 0.034 : loopT(s.clip, tau * s.rate + s.ct0), w); break;
+        case 'H': addLayer(S, s.clip, /^Dying/.test(s.clip) ? DUR[s.clip] - 0.034 : s.freeze ? loopT(s.clip, s.ct0) : loopT(s.clip, tau * s.rate + s.ct0), w); break;
         case 'O': {
           const ct = onceT(s.clip, tau * s.rate);
           if (s.then && t > s.thenAt) { const k = sm((t - s.thenAt) / s.thenFade); addLayer(S, s.clip, ct, w * (1 - k)); addLayer(S, s.then, loopT(s.then, t - s.thenAt + s.thenCt0), w * k); }
@@ -303,7 +308,7 @@
       }
     }
     function stateAt(Ac, ch, t, S) {
-      S.n = 0; S.hidden = false; S.ghost = null;
+      S.n = 0; S.hidden = false; S.ghost = null; S.still = !!(Ac.deadAt && Ac.deadAt[ch] !== undefined && t >= Ac.deadAt[ch]);
       const steps = Ac.plans[ch];
       if (!steps) { S.hidden = true; return S; }
       let i = 0; while (i + 1 < steps.length && steps[i + 1].t0 <= t) i++;
@@ -353,7 +358,7 @@
     const _q = new THREE.Quaternion();
     function apply(Ac, S) {
       const f = Ac.f;
-      f.x = S.x; f.z = S.z; f.yaw = S.yaw; Ac.sink = S.sink;
+      f.x = S.x; f.z = S.z; f.yaw = S.yaw; Ac.sink = S.sink; f.raw = !!S.still;
       // weights: the strongest four layers, normalised
       let tot = 0;
       for (let j = 0; j < S.n; j++) tot += S.ws[j];
@@ -431,113 +436,129 @@
     const crouchWalk = 'Rifle Crouch Walk';
 
     // =================================================================== the sentries (every chapter)
+    // 22 men standing in holes round the line (works.js draws a stand-in man in every other hole), and two moving low
+    // between the holes. Standing in a hole a man is sunk 0.92 m: helmet, shoulders and rifle over the parapet, the
+    // rifle held out over the bags toward his front (Ac.watch). Stand-to at first light (chapters 1, 10): everyone up.
+    // The first eight bearings are the old ones (marines-c.js keeps clear of the holes they pick, in this order).
     const usedHoles = new Set();
-    const pickHole = (b) => { let best = -1, bd = 1e9; holes.forEach((h, i) => { if (usedHoles.has(i)) return; const d = Math.abs(wrapA((h.b - b) * Math.PI / 180)); if (d < bd) { bd = d; best = i; } }); usedHoles.add(best); return holes[best]; };
-    const sentryHoles = [165, 190, 212, 236, 262, 300, 130, 25].map(pickHole);
+    const pickHole = (b) => { let best = -1, bd = 1e9; holes.forEach((h, i) => { if (usedHoles.has(i)) return; const d = Math.abs(wrapA((h.b - b) * Math.PI / 180)); if (d < bd) { bd = d; best = i; } }); if (best >= 0) usedHoles.add(best); return best; };
+    const sentryIdx = [165, 190, 212, 236, 262, 300, 130, 25, 140, 152, 177, 184, 197, 221, 308, 322, 340, 355, 10, 45, 70, 100].map(pickHole);
+    const sentryHoles = sentryIdx.map((i) => (i >= 0 ? holes[i] : null));
+    if (W.vacate) W.vacate(sentryIdx.filter((i) => i >= 0));
+    const UPH = 0.92, CROUCHH = 0.36;
     for (let ch = 1; ch <= 11; ch++) {
       const L = LOOPS[ch];
       sentryHoles.forEach((h, i) => {
         const Ac = SEN[i], r = rng(ch * 131 + i * 17);
         if (!h) { hidden(Ac, ch, L); return; }
-        const night = ch === 9 || ch === 10;
-        const low = night ? 0.62 : 0.5;
-        const c0 = night ? 'Idle Crouching' : ['Rifle Idle', 'Looking Around', 'Idle Crouching'][i % 3];
-        const P = Plan(Ac, ch, L, h.x, h.z, h.yaw + (r() - 0.5) * 0.5, c0, { sink: c0 === 'Idle Crouching' ? 0.25 : low });
+        const night = ch === 9, standTo = ch === 1 || ch === 10;
+        const yaw0 = h.yaw + (r() - 0.5) * 0.45;
+        (Ac.watch = Ac.watch || {})[ch] = v3(h.x + Math.sin(yaw0) * 40, G(h.x, h.z) + 0.2, h.z + Math.cos(yaw0) * 40);
+        const pose = (k) => (k === 0 ? ['Rifle Idle', UPH] : k === 1 ? ['Looking Around', UPH] : ['Idle Crouching', CROUCHH]);
+        const k0 = night ? (i % 3 ? 2 : 0) : standTo ? (i % 4 === 3 ? 1 : 0) : [0, 1, 0, 2][i % 4];
+        const [c0, s0] = pose(k0);
+        const P = Plan(Ac, ch, L, h.x, h.z, yaw0, c0, { sink: s0 });
         if (ch === 5) {
           // rockets 60-80: down into the hole, up again after
-          P.hold(4 + r() * 10, i % 2 ? 'Looking Around' : 'Rifle Idle', { sink: low, fade: 0.7 });
-          P.hold(60.3 + r() * 0.8, 'Idle Crouching', { sink: 0.95, fade: 0.35 });
-          P.hold(82 + r() * 4, c0, { sink: c0 === 'Idle Crouching' ? 0.25 : low, fade: 0.9 });
-        } else if (!night) {
-          // shift between standing watch and crouching, turning a little now and then
-          let t = 5 + r() * 12;
-          while (t < L - 14) { const c = ['Rifle Idle', 'Looking Around', 'Idle Crouching'][Math.floor(r() * 3)]; P.hold(t, c, { sink: c === 'Idle Crouching' ? 0.25 : low, yaw: h.yaw + (r() - 0.5) * 0.9, fade: 0.8 }); t += 10 + r() * 14; }
-          P.hold(L - 7, c0, { sink: c0 === 'Idle Crouching' ? 0.25 : low, yaw: P.steps[0].yaw, fade: 0.9 });
+          P.hold(60.3 + r() * 0.8, 'Idle Crouching', { sink: 1.0, fade: 0.35 });
+          P.hold(82 + r() * 4, c0, { sink: s0, fade: 0.9 });
         } else {
-          let t = 8 + r() * 20;
-          while (t < L - 20) { P.hold(t, 'Idle Crouching', { sink: 0.62, yaw: h.yaw + (r() - 0.5) * 0.8, fade: 0.9 }); t += 18 + r() * 20; }
-          P.hold(L - 10, 'Idle Crouching', { sink: 0.62, yaw: P.steps[0].yaw, fade: 0.9 });
+          // now and then he turns his head along the line, or crouches a while, and comes back to his first pose
+          let t = 6 + r() * 14;
+          while (t < L - 16) {
+            const k = standTo ? (r() < 0.75 ? 0 : 1) : night ? (r() < 0.6 ? 2 : 0) : Math.floor(r() * 3), [c, sk] = pose(k);
+            P.hold(t, c, { sink: sk, yaw: h.yaw + (r() - 0.5) * 0.8, fade: 0.9 }); t += 11 + r() * 15;
+          }
+          P.hold(L - 8, c0, { sink: s0, yaw: yaw0, fade: 0.9 });
         }
       });
-      // two walk the ring, inside the line, out and back once a loop
-      [[150, 8], [228, 9]].forEach(([b0, i]) => {
-        const Ac = SEN[i], night = ch === 9 || ch === 10, v = night ? 0.7 : 0.82;
+      // two move low between the holes, along the path behind the line, out and back once a loop
+      [[150, 22], [178, 23]].forEach(([b0, i]) => {
+        const Ac = SEN[i], low = ch === 1 || ch === 9 || ch === 10;
+        const clip = low ? crouchWalk : 'Walk With Rifle', v = low ? 0.46 : 0.82, stop = low ? 'Idle Crouching' : 'Looking Around';
         const pause = 8, len = Math.max(8, (L - 2 * pause - 2) * v / 2);
-        const pts = []; const r0 = 5;
-        for (let k = 0; k <= 12; k++) { const a = b0 + k * 4; pts.push(onRing(a, -r0)); }
+        const pts = []; const r0 = 5.2;
+        for (let k = 0; k <= 14; k++) { const a = b0 + k * 4; pts.push(onRing(a, -r0)); }
         const path = mkPath(pts), d1 = Math.min(path.len, len);
         const p0 = pathAt(path, 0, { x: 0, z: 0 });
-        const P = Plan(Ac, ch, L, p0.x, p0.z, pathYaw(path, 0) + Math.PI * 0.5, 'Looking Around');
+        const P = Plan(Ac, ch, L, p0.x, p0.z, pathYaw(path, 0) + Math.PI * 0.5, stop);
         if (ch === 5) {
-          P.walk(3, 'Walk With Rifle', null, { path, d0: 0, d1: Math.min(d1, 40), v, stop: 'Looking Around' });
+          P.walk(3, clip, null, { path, d0: 0, d1: Math.min(d1, 40), v, stop });
           P.hold(60.4, 'Idle Crouching', { fade: 0.35 });
           const pp = P.at(84);
-          P.walk(84, 'Walk With Rifle', null, { path: mkPath([[pp.x, pp.z], [p0.x, p0.z]]), v, stop: 'Looking Around', stopYaw: pathYaw(path, 0) + Math.PI * 0.5 });
+          P.walk(84, clip, null, { path: mkPath([[pp.x, pp.z], [p0.x, p0.z]]), v, stop, stopYaw: pathYaw(path, 0) + Math.PI * 0.5 });
         } else {
-          P.walk(pause * 0.5, 'Walk With Rifle', null, { path, d0: 0, d1, v, stop: 'Looking Around', stopYaw: pathYaw(path, d1) - Math.PI * 0.5 });
+          P.walk(pause * 0.5, clip, null, { path, d0: 0, d1, v, stop, stopYaw: pathYaw(path, d1) - Math.PI * 0.5 });
           const back = mkPath(pts.slice().reverse()), e = back.len - d1;
-          P.walk(pause * 1.5 + d1 / v, 'Walk With Rifle', null, { path: back, d0: e, d1: back.len, v, stop: 'Looking Around', stopYaw: pathYaw(path, 0) + Math.PI * 0.5 });
+          P.walk(pause * 1.5 + d1 / v, clip, null, { path: back, d0: e, d1: back.len, v, stop, stopYaw: pathYaw(path, 0) + Math.PI * 0.5 });
         }
       });
     }
 
     // =================================================================== the CP (every chapter)
-    const crateSeat = tL(-2.6, -1.4), radioCrate = tL(-1.1, 1.9);
+    // Inside the CP bunker (works.js): the floor dug 0.3 m (the men inside stand sunk CPF), Hartzell on an ammunition
+    // box at the table's end (works.js cpSeats[0]; its top is Sitting Idle's seat height, so his soles are on the
+    // ground), Donnelly behind the table, Engel and the CP radioman at the radios against the back wall, Cahill and his
+    // radioman on the near side. They leave and come back by the open front (the door point outside it).
+    const CPF = T.floor || 0;
+    const radioCrate = tL(-0.7, -1.6);
     const tableMid = tL(0, 0);
+    const seat0 = W.cpSeats ? [W.cpSeats[0].x, W.cpSeats[0].z] : tL(-1.55, -0.45);
     const spot = {
-      hartzell: crateSeat, donnelly: tL(0.4, -0.95), engel: tL(-1.15, 1.25), cpRTO: tL(1.5, 0.9), cahill: tL(1.25, -1.05), cahillRTO: tL(2.0, -1.5),
-      watchC: tL(-3.5, 3.4), watchD: tL(-1.9, 3.8),   // the south-west edge of the CP, looking toward the ridge
+      hartzell: seat0, donnelly: tL(0.3, -0.82), engel: tL(-0.75, -1.12), cpRTO: tL(1.15, -1.08), cahill: tL(0.95, 0.82), cahillRTO: tL(1.85, 1.05),
+      door: tL(-0.9, 2.35), watchC: tL(-2.2, 5.4), watchD: tL(-0.6, 5.8),   // outside the open side, looking toward the ridge
     };
     const toTable = (p) => faceTo(p, tableMid);
     const towardRidge = faceTo([T.pos.x, T.pos.z], [S6.battleSummit.x, S6.battleSummit.z]);
     const cahillEnd = (() => { const p = S6.perimSW, dx = T.pos.x - p.x, dz = T.pos.z - p.z, l = Math.hypot(dx, dz); return [p.x + dx / l * 7, p.z + dz / l * 7]; })();
+    // out of the bunker to pts, and back in to a spot
+    const goOut = (P, t0, pts, o) => { P.walk(t0, 'Walk With Rifle', [spot.door], { v: 0.6, sink: 0, sinkFrom: CPF, stop: 'Looking Around' }); P.walk(P.endsAt, 'Walk With Rifle', pts, Object.assign({ v: 0.7, sink: 0 }, o)); return P; };
+    const goIn = (P, t0, to, o) => { P.walk(t0, 'Walk With Rifle', [spot.door], { v: 0.7, sink: 0, stop: 'Looking Around' }); P.walk(P.endsAt, 'Walk With Rifle', [to], Object.assign({ v: 0.6, sink: CPF, sinkFrom: 0 }, o)); return P; };
     for (let ch = 1; ch <= 11; ch++) {
       const L = LOOPS[ch], r = rng(ch * 977);
-      // Hartzell on the crate, Donnelly at the table, Engel at the crate radio, the CP radioman beside the table
-      const hz = Plan(HZ, ch, L, spot.hartzell[0], spot.hartzell[1], toTable(spot.hartzell), 'Sitting Idle');
-      const dn = Plan(DN, ch, L, spot.donnelly[0], spot.donnelly[1], toTable(spot.donnelly), 'Looking Around');
-      const en = Plan(EN, ch, L, spot.engel[0], spot.engel[1], faceTo(spot.engel, radioCrate), ch % 2 ? 'Talking On Phone' : 'Looking Around');
-      const rt = Plan(CPR, ch, L, spot.cpRTO[0], spot.cpRTO[1], toTable(spot.cpRTO), 'Looking Around');
+      const hz = Plan(HZ, ch, L, spot.hartzell[0], spot.hartzell[1], toTable(spot.hartzell), 'Sitting Idle', { sink: 0 });
+      const dn = Plan(DN, ch, L, spot.donnelly[0], spot.donnelly[1], toTable(spot.donnelly), 'Looking Around', { sink: CPF });
+      const en = Plan(EN, ch, L, spot.engel[0], spot.engel[1], faceTo(spot.engel, radioCrate), ch % 2 ? 'Talking On Phone' : 'Looking Around', { sink: CPF });
+      const rt = Plan(CPR, ch, L, spot.cpRTO[0], spot.cpRTO[1], toTable(spot.cpRTO), 'Looking Around', { sink: CPF });
       // the CP radioman lifts his handset whenever the CP sends or receives (radio.js times)
       const talk = { 1: [[7, 15]], 3: [[at(3, '1020') - 1, at(3, '1020') + 5], [33.5, 39], [43, 49], [51.5, 57], [at(3, '1145') - 1, at(3, '1145') + 5]], 4: [[0.5, 7.5], [82, 89]], 7: [[105, 115]], 11: [[at(11, '0900') - 1, at(11, '0900') + 6]] }[ch] || [];
       for (const [a, b] of talk) { rt.hold(a, 'Talking On Phone', { ct0: 2 }); rt.hold(b, 'Looking Around'); }
       if (ch === 2) {
         // the CP watches the patrol go
-        dn.walk(4, 'Walk With Rifle', [spot.watchD], { stop: 'Looking Around', stopYaw: towardRidge, v: 0.7 });
-        dn.walk(80, 'Walk With Rifle', [spot.donnelly], { stop: 'Looking Around', stopYaw: toTable(spot.donnelly), v: 0.7 });
+        goOut(dn, 4, [spot.watchD], { stop: 'Looking Around', stopYaw: towardRidge });
+        goIn(dn, 76, spot.donnelly, { stop: 'Looking Around', stopYaw: toTable(spot.donnelly) });
       }
       if (ch === 5) {
-        // the rockets: everyone down (60-80), up again, Hartzell and Donnelly back at the table by 90
+        // the rockets: everyone down in the bunker (60-80), up again; Hartzell back on his box
         for (const [P, Ac, p] of [[hz, HZ, spot.hartzell], [dn, DN, spot.donnelly], [en, EN, spot.engel], [rt, CPR, spot.cpRTO]]) {
-          const dive = 60.2 + r() * 0.6;
-          const out = yawOf(p[0] - tableMid[0], p[1] - tableMid[1]) + (r() - 0.5) * 0.6;
-          P.hold(dive, 'Prone Idle', { fade: 0.5, x: p[0] + Math.sin(out) * 0.5, z: p[1] + Math.cos(out) * 0.5, yaw: out, turn: 0.4 });
-          P.hold(80.5 + r() * 2, 'Crouch Idle 02 Looking Around', { fade: 1.0, x: p[0], z: p[1] });
-          P.hold(85 + r() * 2, Ac === HZ ? 'Sitting Idle' : 'Looking Around', { fade: 1.0, yaw: Ac === EN ? faceTo(p, radioCrate) : toTable(p) });
+          P.hold(60.2 + r() * 0.6, 'Idle Crouching', { fade: 0.45, sink: CPF });
+          P.hold(80.5 + r() * 2, 'Crouch Idle 02 Looking Around', { fade: 1.0, sink: CPF });
+          P.hold(85 + r() * 2, Ac === HZ ? 'Sitting Idle' : 'Looking Around', { fade: 1.0, sink: Ac === HZ ? 0 : CPF, yaw: Ac === EN ? faceTo(p, radioCrate) : toTable(p) });
         }
       }
       if (ch === 7) {
         // 1745: Hartzell and Donnelly at the radio for Cahill's call
-        hz.hold(101, 'Looking Around', { fade: 1.0 });
-        hz.walk(101.5, 'Walk With Rifle', [tL(1.6, 0.0)], { stop: 'Looking Around', stopYaw: faceTo(tL(1.6, 0.0), spot.cpRTO), v: 0.6 });
-        dn.walk(102, 'Walk With Rifle', [tL(2.1, 1.5)], { stop: 'Looking Around', stopYaw: faceTo(tL(2.1, 1.5), spot.cpRTO), v: 0.6 });
-        hz.walk(114, 'Walk With Rifle', [spot.hartzell], { stop: 'Sitting Idle', stopYaw: toTable(spot.hartzell), v: 0.6 });
+        hz.hold(101, 'Looking Around', { fade: 1.0, sink: 0 });
+        hz.walk(101.5, 'Walk With Rifle', [tL(1.6, -0.75)], { stop: 'Looking Around', stopYaw: faceTo(tL(1.6, -0.75), spot.cpRTO), v: 0.6, sink: CPF, sinkFrom: 0 });
+        dn.walk(102, 'Walk With Rifle', [tL(0.6, -1.15)], { stop: 'Looking Around', stopYaw: faceTo(tL(0.6, -1.15), spot.cpRTO), v: 0.6 });
+        hz.walk(114, 'Walk With Rifle', [spot.hartzell], { stop: 'Sitting Idle', stopYaw: toTable(spot.hartzell), v: 0.6, sink: 0, sinkFrom: CPF });
         dn.walk(114.5, 'Walk With Rifle', [spot.donnelly], { stop: 'Looking Around', stopYaw: toTable(spot.donnelly), v: 0.6 });
       }
       if (ch === 9 || ch === 10) { en.hold(3, 'Looking Around', { fade: 0.8 }); }
-      idles(dn, DN, L, ['Looking Around', 'Pointing', 'Looking Around'], r, { from: ch === 2 ? 1e9 : ch === 5 ? 90 : ch === 7 ? 1e9 : 0 });
-      // Cahill and his radioman: chapters 1-4
-      if (ch <= 4) {
-        const ca = Plan(CAH, ch, L, spot.cahill[0], spot.cahill[1], toTable(spot.cahill), 'Looking Around');
-        const cr = Plan(CAHR, ch, L, spot.cahillRTO[0], spot.cahillRTO[1], toTable(spot.cahillRTO), 'Looking Around');
-        if (ch === 2) { ca.walk(6, 'Walk With Rifle', [spot.watchC], { stop: 'Looking Around', stopYaw: towardRidge, v: 0.7 }); ca.hold(30, 'Pointing'); ca.hold(34, 'Looking Around'); ca.walk(78, 'Walk With Rifle', [spot.cahill], { stop: 'Looking Around', stopYaw: toTable(spot.cahill), v: 0.7 }); }
-        if (ch === 3) { ca.walk(40, 'Walk With Rifle', [tL(1.9, 0.6)], { stop: 'Looking Around', stopYaw: faceTo(tL(1.9, 0.6), spot.cpRTO), v: 0.6 }); ca.walk(60, 'Walk With Rifle', [spot.cahill], { stop: 'Looking Around', stopYaw: toTable(spot.cahill), v: 0.6 }); }
+      idles(dn, DN, L, ['Looking Around', 'Pointing', 'Looking Around'], r, { from: ch === 2 ? 1e9 : ch === 5 ? 90 : ch === 7 ? 1e9 : 0, sink: CPF });
+      // Cahill and his radioman: chapters 1-3 (from chapter 4 marines-c.js owns them: it walks them from the CP to
+      // Charlie's forming point; both files drawing them made two Cahills at the CP, fix pass hill689)
+      if (ch <= 3) {
+        const ca = Plan(CAH, ch, L, spot.cahill[0], spot.cahill[1], toTable(spot.cahill), 'Looking Around', { sink: CPF });
+        const cr = Plan(CAHR, ch, L, spot.cahillRTO[0], spot.cahillRTO[1], toTable(spot.cahillRTO), 'Looking Around', { sink: CPF });
+        if (ch === 2) { goOut(ca, 6, [spot.watchC], { stop: 'Looking Around', stopYaw: towardRidge }); ca.hold(30, 'Pointing'); ca.hold(34, 'Looking Around'); goIn(ca, 74, spot.cahill, { stop: 'Looking Around', stopYaw: toTable(spot.cahill) }); }
+        if (ch === 3) { ca.walk(40, 'Walk With Rifle', [tL(1.9, 0.3)], { stop: 'Looking Around', stopYaw: faceTo(tL(1.9, 0.3), spot.cpRTO), v: 0.6 }); ca.walk(60, 'Walk With Rifle', [spot.cahill], { stop: 'Looking Around', stopYaw: toTable(spot.cahill), v: 0.6 }); }
         if (ch === 4) {
           // the noon request lands; Cahill decides, and goes forward with his radioman to Charlie's forming point
           ca.hold(10, 'Pointing'); ca.hold(14, 'Looking Around');
-          const pts = [tL(3.4, -3.2), [lerp(T.pos.x, cahillEnd[0], 0.5), lerp(T.pos.z, cahillEnd[1], 0.5)], cahillEnd];
-          ca.walk(28, 'Walk With Rifle', pts, { stop: 'Looking Around', v: 0.95, stopYaw: towardRidge });
-          cr.walk(29.2, 'Walk With Rifle', [tL(3.9, -3.6)].concat(pts.slice(1, 2), [[cahillEnd[0] + 1.6, cahillEnd[1] + 1.0]]), { stop: 'Looking Around', v: 0.95, stopYaw: towardRidge });
+          const pts = [[lerp(spot.door[0], cahillEnd[0], 0.5), lerp(spot.door[1], cahillEnd[1], 0.5)], cahillEnd];
+          goOut(ca, 28, pts, { stop: 'Looking Around', v: 0.95, stopYaw: towardRidge });
+          goOut(cr, 29.2, pts.slice(0, 1).concat([[cahillEnd[0] + 1.6, cahillEnd[1] + 1.0]]), { stop: 'Looking Around', v: 0.95, stopYaw: towardRidge });
           cr.gesture(82.5, 7, 'Talking On Phone');
         }
         if (ch === 1) cr.gesture(16, 7, 'Talking On Phone');
@@ -550,25 +571,46 @@
     // A's roster: 0 Banks, 1 his radioman, 2-3 corpsmen, 4 Lovely, 5-23 1st Platoon (5-9 and 10-14 the two squads that
     // push in first), 24 Hayden, 25 his platoon sergeant, 26-44 2nd Platoon.
     const r0 = rng(77);
-    // ---- chapter 1: forming on the south-west side of 689, checking gear
+    // ---- chapter 1: stand-to, and Company A forming for the patrol on the south-west side of 689 (works.assembly):
+    // squads kneeling in clusters round their leaders, checking gear; a squad leader points the way now and then;
+    // Banks with his radioman by the headquarters cluster
     {
       const L = LOOPS[1];
-      const cluster = (bear, rad) => onRing(bear, -perim.rAt(bear) + rad);
-      const groups = { hq: cluster(222, 36), p1: cluster(238, 29), p2: cluster(205, 31) };
-      const placed = [];
-      const near = (c, rad, r) => { for (let k = 0; k < 40; k++) { const a = r() * TAU, d = rad * Math.sqrt(r()); const p = [c[0] + Math.cos(a) * d, c[1] + Math.sin(a) * d]; if (placed.every((q) => Math.hypot(q[0] - p[0], q[1] - p[1]) > 1.7)) { placed.push(p); return p; } } const p = [c[0] + r() * 2, c[1] + r() * 2]; placed.push(p); return p; };
-      A.forEach((Ac, i) => {
-        const r = rng(500 + i);
-        const g = i <= 3 ? 'hq' : i <= 23 ? 'p1' : 'p2';
-        const p = i === 0 ? groups.hq : i === 1 ? [groups.hq[0] + 1.2, groups.hq[1] + 0.6] : near(groups[g], g === 'hq' ? 3 : 6.5, r);
-        if (i <= 1) placed.push(p);
-        const face = i === 24 ? faceTo(p, groups.p2) + Math.PI : faceTo(p, groups[g]) + (r() - 0.5) * 1.6 + (r() < 0.5 ? Math.PI : 0);
-        const set = IDLE[Ac.kind];
-        const c0 = Ac.kind === 'rifleman' ? ['Rifle Idle', 'Rifle Kneel Idle', 'Looking Around', 'Idle Crouching'][Math.floor(r() * 4)] : i === 0 || i === 24 ? 'Looking Around' : set[0];
-        const P = Plan(Ac, 1, L, p[0], p[1], face, c0);
-        if (i === 0) { P.hold(18, 'Pointing'); P.hold(22, 'Looking Around'); P.hold(38, 'Talking On Phone', { ct0: 3 }); P.hold(45, 'Looking Around'); }
-        else if (i === 24) { P.hold(26, 'Pointing'); P.hold(30, 'Looking Around'); }
-        else idles(P, Ac, L, set, r);
+      const inA = W.assembly || (() => true);
+      const at1 = (b, back) => onRing(b, -back);
+      // [bearing, metres in from the line, members]
+      const CL = [
+        // on bearings 200-224, clear of Charlie's men on the W-SW arc (marines-c.js, 228-300)
+        [214, 27, [0, 1, 2, 3, 4]],                                  // headquarters: Banks, his radioman, two corpsmen, Lovely
+        [203, 10, [5, 6, 7, 8, 9, 10]], [212, 10, [11, 12, 13, 14, 15, 16]], [221, 10, [17, 18, 19, 20, 21, 22, 23]],
+        [205, 19, [24, 26, 27, 28, 29, 30, 31, 32]], [215, 18.5, [25, 33, 34, 35, 36, 37, 38]], [224, 19, [39, 40, 41, 42, 43, 44]],
+      ];
+      CL.forEach(([bear, back, mem], ci) => {
+        let c = at1(bear, back);
+        for (let k = 0; k < 6 && !inA(c[0], c[1]); k++) c = at1(bear, back + 2);
+        mem.forEach((i, j) => {
+          const Ac = A[i], r = rng(500 + i);
+          const lead = j === 0;
+          // the leader kneels at the cluster's outer side, facing his men and the line beyond them
+          const a = lead ? 0 : (j / (mem.length - 1)) * TAU * 0.9 + ci + (r() - 0.5) * 0.4, d = lead ? 0 : 1.7 + r() * 0.9;
+          const p = lead ? c : [c[0] + Math.cos(a) * d, c[1] + Math.sin(a) * d];
+          const face = lead ? faceTo(p, onRing(bear, 0)) + Math.PI : faceTo(p, c) + (r() - 0.5) * 0.9;
+          const kneelSet = Ac.kind === 'rifleman' ? ['Rifle Kneel Idle', 'Idle Crouching', 'Rifle Kneel Idle', 'Crouch Idle 02 Looking Around'] : ['Crouch Idle 02 Looking Around'];
+          const c0 = kneelSet[Math.floor(r() * kneelSet.length)];
+          if (i === 0) {
+            // Banks: up on one knee by his radioman, then standing to take the handset for the SitRep
+            const P = Plan(Ac, 1, L, p[0], p[1], faceTo(p, onRing(bear, 0)), 'Crouch Idle 02 Looking Around');
+            P.hold(18, 'Kneeling Pointing', { fade: 0.6, yaw: faceTo(p, onRing(bear, 0)) }); P.hold(22, 'Crouch Idle 02 Looking Around', { fade: 0.6 });
+            P.hold(37.5, 'Talking On Phone', { ct0: 3, fade: 0.8 }); P.hold(45, 'Crouch Idle 02 Looking Around', { fade: 0.8 });
+            return;
+          }
+          const P = Plan(Ac, 1, L, p[0], p[1], face, lead ? 'Rifle Kneel Idle' : c0);
+          if (lead) {
+            // a squad leader: points the way out through the line, twice a loop
+            const t1 = 8 + ci * 3.1, t2 = 34 + ci * 2.3;
+            for (const tt of [t1, t2]) { P.hold(tt, 'Kneeling Pointing', { fade: 0.5, yaw: faceTo(p, onRing(bear, 0)) }); P.hold(tt + 3.4, 'Rifle Kneel Idle', { fade: 0.6, yaw: face }); }
+          } else idles(P, Ac, L, kneelSet, r);
+        });
       });
     }
     // ---- chapter 2: the patrol as one moving column (fix pass, spacing: 2.5-3.5 m in grass and forest, platoons
@@ -654,15 +696,21 @@
     const restA = {};   // each man's pose as chapter 3 ends: chapters 4-7 start from it
     {
       const L = LOOPS[3];
-      const fallW = { 7: 11.2, 12: 12.6 };                 // the two men of the first squads
-      const deadAt = { 24: 45, 25: 48 };                     // Hayden, then his platoon sergeant
-      const woundAt = { 30: 36.5, 38: 41, 41: 52 };          // in the assault
-      const mortarHit = { 16: 58.3, 33: 81.3, 9: 103.2 };    // hit near the mortar bursts
+      // The record's dead lie still; the wounded breathe (Abram, 2026-11-09). Alpha's count by about 1200 is 10 killed and
+      // 20 wounded (DY p. 313, ComdC p. 10) out of two reinforced platoons; the 45 men shown carry all 10 dead and 6 of the
+      // wounded (the rest of the wounded are men not shown). Killed: the two of the first contact (2 KIA, about 1000),
+      // Hayden and his platoon sergeant (Q4), four more in the assault, two at the mortar bursts.
+      const fallW = { 7: 11.2, 12: 12.6 };                   // the two men of the first squads: killed
+      const deadAt = { 24: 45, 25: 48, 27: 38.4, 31: 43.6, 35: 46.3, 40: 50.6 };   // Hayden, his platoon sergeant, four more
+      const woundAt = { 30: 36.5, 38: 41, 41: 52, 36: 39.6, 43: 47.2 };            // wounded in the assault
+      const mortarHit = { 16: 58.3, 33: 81.3, 9: 103.2 };    // hit near the mortar bursts: 16 wounded, 33 and 9 killed
+      const mortarKIA = { 33: true, 9: true };
       const MORTARS = [38, 58, 81, 103];
-      const dragged = { 7: { pair: [18, 19], t: 50 }, 12: { pair: [21, 22], t: 57 } };   // fix pass: earlier, so the first drag is under way by 70
+      // two pairs go out for two wounded men at the fringe and drag them back (the dead are left where they fell)
+      const dragged = { 30: { pair: [18, 19], t: 50 }, 38: { pair: [21, 22], t: 57 } };
       const pairOf = {}; for (const w in dragged) dragged[w].pair.forEach((p, j) => { pairOf[p] = { w: +w, j, t: dragged[w].t }; });
       const plans = {};
-      const order3 = [5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 4].concat(A.map((_, i) => i).filter((i) => i >= 24), [0, 1, 2, 3]);
+      const order3 = [5, 6, 7, 8, 9, 10, 11, 12, 13, 14].concat(A.map((_, i) => i).filter((i) => i >= 24), [15, 16, 17, 18, 19, 20, 21, 22, 23, 4, 0, 1, 2, 3]);
       order3.forEach((i) => {
         const Ac = A[i];
         const r = rng(3000 + i);
@@ -674,10 +722,10 @@
           P = Plan(Ac, 3, L, p0[0], p0[1], yawBunk, 'Rifle Kneel Idle');
           P.walk(0.6 + r() * 0.8, crouchWalk, [p1], { v: 0.9, stop: 'Rifle Kneel Idle' });
           if (fallW[i]) {
-            P.once(fallW[i], 'Dying (1)', { then: 'Laying Breathless', thenAfter: 3.9 });
+            P.cut(fallW[i]).die(fallW[i], 'Dying (1)');
           } else if (mortarHit[i]) {
             P.hold(11.4 + r() * 1.4, 'Prone Idle', { fade: 0.55 });
-            P.hold(mortarHit[i], 'Laying Breathless', { fade: 1.2 });
+            P.hold(mortarHit[i], 'Laying Breathless', { fade: 1.2, freeze: !!mortarKIA[i], ct0: 0.3, dead: !!mortarKIA[i] });
           } else {
             P.hold(11.4 + r() * 1.4, 'Prone Idle', { fade: 0.55 });
             // after 60 the fringe crawls back a few metres
@@ -699,7 +747,7 @@
             const reach = [wpos[0] - uA.x * 0.9 + rA.x * side, wpos[1] - uA.z * 0.9 + rA.z * side];
             P.walk(D0.t, crouchWalk, [reach], { v: 0.75, stop: 'Rifle Kneel Idle', stopYaw: yawBunk });
             const tArr = P.endsAt + 1.6;
-            const lz = [ALZ.x + rA.x * (side * 2 + (D0.w === 12 ? 2.5 : -2.5)), ALZ.z + rA.z * (side * 2 + (D0.w === 12 ? 2.5 : -2.5))];
+            const lz = [ALZ.x + rA.x * (side * 2 + (D0.w === 38 ? 2.5 : -2.5)), ALZ.z + rA.z * (side * 2 + (D0.w === 38 ? 2.5 : -2.5))];
             const path = mkPath([reach, [lerp(reach[0], lz[0], 0.5) + rA.x * side, lerp(reach[1], lz[1], 0.5) + rA.z * side], lz]);
             P.walk(tArr, crouchWalk, null, { path, rev: true, v: 0.42, stop: 'Rifle Kneel Idle', stopYaw: yawBunk });
             Ac.drag = { path, t: tArr, v: 0.42, side };
@@ -725,14 +773,13 @@
           }
           const tHalt = Math.max(t, 49 + r() * 2);
           if (deadAt[i]) {
-            // killed (DY p. 313), but on screen every fallen man breathes as wounded (Abram's ruling, 2026-11-09): the
-            // deaths are in the panel and the labels, not in the poses
-            P.once(deadAt[i], i === 24 ? 'Dying' : 'Dying (1)', { then: 'Laying Breathless', thenAfter: i === 24 ? DUR['Dying'] - 0.8 : 3.9 });
+            // killed (DY p. 313): a gentle fall, then still (Abram's ruling, 2026-11-09: the record's dead lie still)
+            P.cut(deadAt[i]).die(deadAt[i], i === 24 ? 'Dying' : 'Dying (1)');
           } else if (woundAt[i]) {
-            P.once(woundAt[i], 'Dying (1)', { then: 'Laying Breathless', thenAfter: 3.9 });
+            P.cut(woundAt[i]).once(woundAt[i], 'Dying (1)', { then: 'Laying Breathless', thenAfter: 3.9 });
           } else {
             P.hold(tHalt, i % 3 === 0 ? 'Idle Crouching' : 'Prone Idle', { fade: 0.6 });
-            if (mortarHit[i]) P.hold(mortarHit[i], 'Laying Breathless', { fade: 1.2 });
+            if (mortarHit[i]) P.hold(mortarHit[i], 'Laying Breathless', { fade: 1.2, freeze: !!mortarKIA[i], ct0: 0.3, dead: !!mortarKIA[i] });
             else {
               const p = P.at(64), back = [p.x - uA.x * 5, p.z - uA.z * 5];
               if (i % 3 === 0) P.hold(63 + r() * 4, 'Prone Idle', { fade: 0.7 });
@@ -746,11 +793,11 @@
           P = Plan(Ac, 3, L, p0[0], p0[1], yawBunk, 'Crouch Idle 02 Looking Around');
           if (i === 0) for (const [a, b] of [[33, 39.5], [43.5, 49], [51.5, 57]]) { P.hold(a, 'Talking On Phone', { fade: 0.8, ct0: 1 }); P.hold(b, 'Crouch Idle 02 Looking Around', { fade: 0.8 }); }
           if (i === 2) {
-            // to the first wounded man, beside him until the pair comes, then back with them
-            const wp = plans[7] ? plans[7].at(30) : null, w = wp ? [wp.x + rA.x * 1.1 - uA.x * 0.3, wp.z + rA.z * 1.1 - uA.z * 0.3] : pA(16, 1);
-            P.walk(17, crouchWalk, [w], { v: 0.75, stop: 'Crouch Idle 02 Looking Around', stopYaw: faceTo(w, wp ? [wp.x, wp.z] : w) });
+            // to the first wounded man of the assault, beside him until the pair comes, then back with them
+            const wp = plans[30] ? plans[30].at(44) : null, w = wp ? [wp.x + rA.x * 1.1 - uA.x * 0.3, wp.z + rA.z * 1.1 - uA.z * 0.3] : pA(16, 1);
+            P.walk(39, crouchWalk, [w], { v: 0.75, stop: 'Crouch Idle 02 Looking Around', stopYaw: faceTo(w, wp ? [wp.x, wp.z] : w) });
             const back = pA(29.5, 4);
-            P.walk(dragged[7].t2 ? dragged[7].t2 + 2 : 80, crouchWalk, [back], { v: 0.45, stop: 'Crouch Idle 02 Looking Around', stopYaw: yawBunk });
+            P.walk(dragged[30].t2 ? dragged[30].t2 + 2 : 80, crouchWalk, [back], { v: 0.45, stop: 'Crouch Idle 02 Looking Around', stopYaw: yawBunk });
           }
           if (i === 3) {
             const wp = plans[30] ? null : null; void wp;
@@ -759,7 +806,7 @@
           }
         }
         plans[i] = P;
-        for (const t of MORTARS) if (!(deadAt[i] && t > deadAt[i]) && !(woundAt[i] && t > woundAt[i]) && !(fallW[i] && t > fallW[i])) P.flinch(t + 0.05 + r() * 0.2);
+        for (const t of MORTARS) if (!(deadAt[i] && t > deadAt[i]) && !(woundAt[i] && t > woundAt[i]) && !(fallW[i] && t > fallW[i]) && !(mortarHit[i] && t > mortarHit[i])) P.flinch(t + 0.05 + r() * 0.2);
       });
       // the dragged men slide along with their pairs, lying on their backs, head toward the pair
       for (const w in dragged) {
@@ -771,13 +818,15 @@
         P.walk(Dg.t2, 'Laying Breathless', null, { path: lead, d0: 0, d1: lead.len - 1.0, v: 0.42, yawFixed: yawBunk, turn: 2.0, stop: 'Laying Breathless', stopYaw: yawBunk });
         (A[w].pon = A[w].pon || {})[3] = Dg.t2 - 1.2;   // dragged on a poncho (integration)
       }
-      A.forEach((Ac) => { const s = stateAt(Ac, 3, L - 0.01, S1); let m = '', mw = 0; for (let j = 0; j < s.n; j++) if (s.ws[j] > mw) { mw = s.ws[j]; m = s.clips[j]; } restA[Ac.idx] = { x: s.x, z: s.z, yaw: s.yaw, clip: m, ghost: s.ghost }; });
+      A.forEach((Ac, i) => { const s = stateAt(Ac, 3, L - 0.01, S1); let m = '', mw = 0, ct = 0; for (let j = 0; j < s.n; j++) if (s.ws[j] > mw) { mw = s.ws[j]; m = s.clips[j]; ct = s.cts[j]; } restA[Ac.idx] = { x: s.x, z: s.z, yaw: s.yaw, clip: m, ghost: s.ghost, dead: !!s.still || !!(fallW[i] || deadAt[i] || mortarKIA[i]), ct }; });
     }
     // A pinned (chapters 4-7) begins from chapter 3's end
     const downA = (Ac) => { const r = restA[Ac.idx]; return /Dying|Laying/.test(r.clip) || !!r.ghost; };
+    const deadA = (Ac) => !!restA[Ac.idx].dead;
     function pinnedA(Ac, ch, L, o) {
       o = o || {};
       const rs = o.rest || restA[Ac.idx], r = rng(ch * 401 + Ac.idx);
+      if (rs.dead) { const P = Plan(Ac, ch, L, rs.x, rs.z, rs.yaw, rs.clip, { freeze: true, ct0: rs.ct }); (Ac.deadAt = Ac.deadAt || {})[ch] = -1e9; if (rs.ghost) (Ac.ghosts[ch] = Ac.ghosts[ch] || []).push({ t: -1e9, clip: rs.ghost }); return P; }
       const P = Plan(Ac, ch, L, rs.x, rs.z, rs.yaw, rs.clip);
       if (rs.ghost) (Ac.ghosts[ch] = Ac.ghosts[ch] || []).push({ t: -1e9, clip: rs.ghost });
       if (!downA(Ac) && !o.still) {
@@ -794,7 +843,7 @@
     // ---- chapter 5: pinned
     A.forEach((Ac) => pinnedA(Ac, 5, LOOPS[5], { fireAt: [9, 33, 52, 77, 101] }));
     // ---- chapter 6: pinned; three wounded low-crawl east toward D, D pairs come for them
-    const crawlers = [30, 38, 41].filter((i) => downA(A[i]));
+    const crawlers = [41, 36, 43].filter((i) => downA(A[i]) && !deadA(A[i]));
     const crawlPlan = {};
     A.forEach((Ac, i) => {
       if (!crawlers.includes(i)) { pinnedA(Ac, 6, LOOPS[6], { fireAt: [12, 40, 66] }); return; }
@@ -837,7 +886,7 @@
       const pairs = [[33, 26, 27], [9, 28, 29]];
       for (const [w, a, b] of pairs) {
         const Wm = A[w], ra = restA[Wm.idx];
-        if (!downA(Wm) || downA(A[a]) || downA(A[b])) continue;
+        if (!downA(Wm) || deadA(Wm) || downA(A[a]) || downA(A[b])) continue;
         const lz = [ALZ.x + rA.x * (w === 30 ? -4 : 4), ALZ.z + rA.z * (w === 30 ? -4 : 4)];
         const path = mkPath([[ra.x - uA.x * 0.9, ra.z - uA.z * 0.9], lz]);
         [a, b].forEach((ai, j) => {
@@ -857,13 +906,13 @@
         P.walk(Wm._t2 + 0.5, 'Laying Breathless', null, { path: lead, v: 0.42, yawFixed: yawBunk, turn: 2.0, stop: 'Laying Breathless', stopYaw: yawBunk });
       }
     }
-    // ---- chapter 7, after the order: every other fallen man of A is dragged toward A's LZ by the two nearest men
-    // still up (Abram's ruling, 2026-11-09: nobody left lying on the field at the withdrawal); poncho drags as above
+    // ---- chapter 7, after the order: every other wounded man of A is dragged toward A's LZ by the two nearest men
+    // still up; the dead stay where they fell (Abram's ruling, 2026-11-09, revised: "leaving their dead", Q13)
     {
       const L = LOOPS[7], tW = at(7, '1730');
       const dist = (p, q) => Math.hypot(p.x - q.x, p.z - q.z);
       const busy = new Set([0, 1, 2, 3, 4, 26, 27, 28, 29, 33, 9]);
-      const toDrag = A.map((Ac, i) => i).filter((i) => !busy.has(i) && downA(A[i]));
+      const toDrag = A.map((Ac, i) => i).filter((i) => !busy.has(i) && downA(A[i]) && !deadA(A[i]));   // the dead are left where they fell (Q13)
       const free = A.map((Ac, i) => i).filter((i) => !busy.has(i) && !downA(A[i]));
       toDrag.forEach((w, k) => {
         const Wm = A[w];
@@ -970,6 +1019,8 @@
         } else hidden(Ac, 11, L);
       });
     }
+    // ---- the dead of chapter 3 lie where they fell through the night and the 17th (bodies recovered on the 22nd)
+    for (let ch = 8; ch <= 11; ch++) for (const Ac of A) if (deadA(Ac)) pinnedA(Ac, ch, LOOPS[ch]);
     // ---- chapters 1-11 bookkeeping for A
     for (let ch = 1; ch <= 11; ch++) for (const Ac of A) if (!Ac.plans[ch]) hidden(Ac, ch, LOOPS[ch]);
 
@@ -1072,7 +1123,8 @@
         }
         if (deltaDown[i] !== undefined) {
           const tf = deltaDown[i];
-          P.once(tf, ['Dying (1)', 'Dying (2)', 'Dying (1)', 'Dying'][Object.keys(deltaDown).indexOf(String(i))], { then: 'Laying Breathless', thenAfter: 4.2 });
+          // single shots to the head (DY p. 315): killed; a gentle fall, then still, left where he fell
+          P.cut(tf).die(tf, ['Dying (1)', 'Dying (2)', 'Dying (1)', 'Dying'][Object.keys(deltaDown).indexOf(String(i))]);
           Ac.sniped = tf;
         } else {
           P.hold(Math.max(66, t) + r() * 2, isRif ? (r() < 0.55 ? 'Prone Idle' : 'Rifle Kneel Idle') : stopC, { fade: 0.7 });
@@ -1082,48 +1134,18 @@
           P.walk(tW + 4 + r() * 6, i < 3 ? 'Walk With Rifle' : crouchWalk, [[pp.x + dx / dl * 16, pp.z + dz / dl * 16]], { v: i < 3 ? 0.8 : 0.55, stop: stopC });
         }
       });
-      // pairs drag all four back toward A's LZ: no fallen man is left on the field on screen (Abram's ruling,
-      // 2026-11-09; Q13's "leaving their dead" stays in the label)
-      // the two nearest men still up go for each (fix pass: fixed pairs were 40 m off and never reached them in time)
-      const dPairs = (() => {
-        const freeD = D.map((Ac, i) => i).filter((i) => i >= 3 && deltaDown[i] === undefined), out = [];
-        for (const w of Object.keys(deltaDown).map(Number)) {
-          const s0 = stateAt(D[w], 7, deltaDown[w] + 6, S1), wx = s0.x, wz = s0.z, dd = {};
-          for (const i of freeD) { const st = stateAt(D[i], 7, tW, S1); dd[i] = Math.hypot(st.x - wx, st.z - wz); }
-          freeD.sort((p, q) => dd[p] - dd[q]);
-          out.push([w, ...freeD.splice(0, 2)]);
-        }
-        return out;
-      })();
-      dPairs.forEach(([w, a, b]) => {
-        const Wm = D[w], tf = deltaDown[w];
-        const wp = (() => { const s = stateAt(Wm, 7, tf + 6, S1); return [s.x, s.z]; })();
-        const dx = ALZ.x - wp[0], dz = ALZ.z - wp[1], dl = Math.hypot(dx, dz), ux = dx / dl, uz = dz / dl;
-        const yawW = yawOf(-ux, -uz);
-        [a, b].forEach((ai, j) => {
-          const Ac = D[ai], side = j ? 0.55 : -0.55;
-          const steps = Ac.plans[7];
-          const keep = steps.findIndex((s) => s.t0 >= tW + 0.5);
-          if (keep > 0) steps.length = keep;
-          const P = { steps };
-          const reach = [wp[0] + ux * 0.95 - uz * side, wp[1] + uz * 0.95 + ux * side];
-          const pl = Plan(Ac, 7, L, 0, 0, 0, 'Rifle Idle'); pl.steps.length = 0; for (const s of P.steps) pl.steps.push(s); Ac.plans[7] = pl.steps;
-          const far = (() => { const st = pl.at(tW + 1.5); return Math.hypot(st.x - reach[0], st.z - reach[1]) > 8; })();
-          pl.walk(tW + 1.5 + j * 0.4, far ? 'Rifle Run' : crouchWalk, [reach], { v: far ? 1.9 : 0.9, stop: 'Rifle Kneel Idle', stopYaw: yawW });
-          const t2 = Math.max(tW + 6, pl.endsAt + 1.6);
-          pl.walk(t2, crouchWalk, [[reach[0] + ux * 9, reach[1] + uz * 9]], { rev: true, v: 0.42, yawFixed: yawW, stop: 'Rifle Kneel Idle', stopYaw: yawW });
-          Wm._t2 = Math.max(Wm._t2 || 0, t2);
-        });
-        const steps = Wm.plans[7], pl = Plan(Wm, 7, L, 0, 0, 0, 'Rifle Idle'); pl.steps.length = 0; for (const s of steps) pl.steps.push(s); Wm.plans[7] = pl.steps;
-        pl.hold(Wm._t2 - 1.0, 'Laying Breathless', { fade: 0.9, yaw: yawW });
-        (Wm.pon = Wm.pon || {})[7] = Wm._t2 - 1.2;   // dragged on a poncho (integration)
-        pl.walk(Wm._t2 + 0.2, 'Laying Breathless', null, { path: mkPath([wp, [wp[0] + ux * 9, wp[1] + uz * 9]]), v: 0.42, yawFixed: yawW, turn: 2.0, stop: 'Laying Breathless', stopYaw: yawW });
-      });
+      // Delta's four are left where they fell (Abram's ruling, 2026-11-09, revised: the record's dead are not carried;
+      // "leaving their dead", Q13); they lie still there through chapters 8-11
+      for (const w of Object.keys(deltaDown).map(Number)) {
+        const Ac = D[w], s0 = stateAt(Ac, 7, L - 0.01, S1), clip = s0.clips[0];
+        for (let ch = 8; ch <= 11; ch++) { Plan(Ac, ch, LOOPS[ch], s0.x, s0.z, s0.yaw, clip, { freeze: true }); (Ac.deadAt = Ac.deadAt || {})[ch] = -1e9; (Ac.ghosts[ch] = []).push({ t: -1e9, clip }); }
+      }
     }
     // chapter 11: eight men run to the CH-46 after it lands hard on 689 (113.2)
     {
       const L = LOOPS[11], lz = (W.lz && W.lz.lz689) || S6.lz689;
       D.forEach((Ac, i) => {
+        if (deltaDown[i] !== undefined) return;   // lies where he fell on the ridge (chapter 7 block)
         if (i < 3 || i > 10) { hidden(Ac, 11, L); return; }
         const k = i - 3, r = rng(1110 + i);
         const a = Math.PI * (0.95 + k * 0.11), wait = [lz.x + Math.cos(a) * (14 + r() * 3), lz.z + Math.sin(a) * (14 + r() * 3)];
@@ -1403,9 +1425,19 @@
         }
         const root = Ac.F.root;
         if (S.hidden) { if (Ac.vis) { root.visible = false; Ac.blob.hide(); Ac.vis = false; } continue; }
-        const gy = G(S.x, S.z);
         Ac.vis = true; nv++;
         let mw = 0; for (let j = 0; j < S.n; j++) if (S.ws[j] > mw) { mw = S.ws[j]; Ac.mainClip = S.clips[j]; }
+        // crowd separation (CM.crowd*): a moving man steps round the others; standing, kneeling and lying men hold
+        {
+          const st = Ac.crowd || (Ac.crowd = { ox: 0, oz: 0 });
+          if (jump) st.ox = st.oz = 0;
+          const mov = V0[Ac.mainClip] !== undefined, grp = (Ac.dragOf && Ac.dragOf[ch]) || (Ac.dragged && Ac.dragged[ch]) ? 'drag' + ch : null;
+          const vx = Math.sin(S.yaw), vz = Math.cos(S.yaw);
+          if (mov && !grp) CM.crowdOffset(tAbs, dt, 'ad' + Ac.idx, S.x, S.z, vx, vz, grp, st);
+          S.x += st.ox; S.z += st.oz;
+          if (S.sink < 1.5) CM.crowdAdd(tAbs, 'ad' + Ac.idx, S.x, S.z, /Laying|Dying|Prone|Crawl/.test(Ac.mainClip) ? 0.9 : 0.4, mov, mov ? vx : 0, mov ? vz : 0, grp);
+        }
+        const gy = G(S.x, S.z);
         sph.center.set(S.x, gy + 0.8 - S.sink, S.z);
         const dist = camPos.distanceTo(sph.center);
         const inView = dist < 380 && frustum.intersectsSphere(sph);      // past 380 m a man is under 4 px tall: not drawn
@@ -1416,7 +1448,8 @@
         if (!jump && root.visible && (frameN + Ac.idx) % every) continue;
         if (Ac.dragOf && Ac.dragOf[ch]) dragPlace(Ac.dragOf[ch], t, S);
         apply(Ac, S);
-        Ac.f.kick = kickAt(Ac, ch, t); aimFor(Ac, ch, t);
+        Ac.f.kick = kickAt(Ac, ch, t);
+        if (aimFor(Ac, ch, t) < 0.01 && Ac.watch && Ac.watch[ch] && Ac.mainClip === 'Rifle Idle' && S.sink > 0.6) { Ac.f.aimAt = Ac.watch[ch]; Ac.f.aimK = 0.85; }
         CM.update(Ac.f, Math.min(0.25, Ac.acc), tAbs);
         Ac.acc = 0; nu++; Ac.updN = frameN;
         root.visible = true;

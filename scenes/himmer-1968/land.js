@@ -9,7 +9,7 @@
 //     instances picked on the CPU when the camera moves (no allocation per frame).
 //   Forest and bamboo in the draws (cls forest), a tree line below the bunker crest on the west of the battle hill.
 //   B-52 craters: bowls with thrown-earth rims on the crest and upper slopes, a few with water; the named ones.
-//   Streams: thin intermittent glints in the valley draw and the gully. Laterite on the lanes and the 689 perimeter.
+//   Streams: intermittent creeks in the valley draws and the gully, faked shallow channels with stones and a few pools. Laterite on the lanes and the 689 perimeter.
 //   Dust on the 689 perimeter and the LZs by day; valley haze in chapters 1, 2 and 10.
 //   Clearings from works.js (window.WORKS.clearings) and rotor wash under window.MEDEVAC.
 // The base's ground material gets a small injection (litter under the grass, laterite on lanes and the perimeter);
@@ -223,42 +223,162 @@
     }
 
     // ======================= streams =======================
-    // Thin intermittent streams in the valley draw and the gully (1968 sheet): traced downhill from the saddle and the
-    // gully's lip, drawn only in stretches (pools and dry bed between).
+    // Intermittent creeks in the valley draws and the gully (1968 sheet: thin blue lines, intermittent), traced downhill
+    // from the saddle and the gully's lip. Fix pass 2026-11-09 (Abram on the old flat glint ribbon: "what is this
+    // line?"): the ground can't be lowered from a plug-in, so a creek is a faked shallow channel, as the craters fake
+    // their bowls: a low lip of dark wet earth each side and a darker bed between, both of varying width on each side
+    // and fading into the ground's own colour (no border stripe), with stretches where the channel all but vanishes;
+    // pale sand bars on the inside of bends; rounded stones along the bed, partly sunk (one instanced draw); water only
+    // in a few low still pools (end of the dry season). The gully below SITE.gullyEdge is a dry rocky bed with a broken
+    // trickle at its bottom. Trees stand over the streams (forest below), so they show in glimpses through the canopy.
     function trace(x, z, len) {
-      const pts = []; let dx = 0, dz = 0, rise = 0, last = gy(x, z);
+      const pts = []; let dx = 0, dz = 0, rise = 0, last = gy(x, z), push = 0, breach = 0, yStall = 0;
       for (let s = 0; s < len / 2; s++) {
-        const e = 1.6, gx = gy(x + e, z) - gy(x - e, z), gz = gy(x, z + e) - gy(x, z - e), l = Math.hypot(gx, gz) || 1;
-        dx = dx * 0.65 - gx / l * 0.35; dz = dz * 0.65 - gz / l * 0.35;
+        if (push > 0) push--;
+        else {
+          const e = 1.6, gx = gy(x + e, z) - gy(x - e, z), gz = gy(x, z + e) - gy(x, z - e), l = Math.hypot(gx, gz) || 1;
+          dx = dx * 0.65 - gx / l * 0.35; dz = dz * 0.65 - gz / l * 0.35;
+        }
         const m = Math.hypot(dx, dz) || 1; x += dx / m * 2; z += dz / m * 2;
         if (x < tile.x0 + 5 || x > tile.x1 - 5 || z < tile.z0 + 5 || z > tile.z1 - 5) break;
-        const y = gy(x, z); rise = y > last - 0.02 ? rise + 1 : 0; last = y;
-        if (rise > 12) break;
+        const y = gy(x, z);
+        if (push > 0) { if (y > yStall + 2.5) break; }
+        else { rise = y > last - 0.02 ? rise + 1 : 0; if (rise > 12) break; }
+        last = y;
         pts.push([x, z]);
+        // circling in a hollow of the elevation model (it piled most of a stream's points on one spot): back out of the
+        // circle and carry straight on down the draw, as the water would once the hollow filled; three times at most
+        const n = pts.length;
+        if (n > 12 && Math.hypot(x - pts[n - 9][0], z - pts[n - 9][1]) < 7) {
+          pts.length = n - 8;
+          if (++breach > 3) break;
+          const p = pts[pts.length - 1], q = pts[pts.length - 5];
+          x = p[0]; z = p[1]; dx = p[0] - q[0]; dz = p[1] - q[1]; push = 14; yStall = gy(x, z); rise = 0; last = yStall;
+        }
       }
       return pts;
     }
     function buildStreams(pos, col, wpos) {
       const sad = SITE.saddle, a = SITE.bearing689to600 * Math.PI / 180, px = Math.cos(a), pz = Math.sin(a);
-      const starts = [[sad.x + px * 12, sad.z + pz * 12, 320], [sad.x - px * 12, sad.z - pz * 12, 320], [SITE.gullyEdge.x, SITE.gullyEdge.z, 260], [SITE.crossing.to.x, SITE.crossing.to.z, 200]];
-      const bed = lin(0x3a3424);
-      for (const [x, z, len] of starts) {
-        const pts = trace(x, z, len); if (pts.length < 8) continue;
+      const starts = [[sad.x + px * 12, sad.z + pz * 12, 320, 'creek'], [sad.x - px * 12, sad.z - pz * 12, 320, 'creek'], [SITE.gullyEdge.x, SITE.gullyEdge.z, 260, 'gully'], [SITE.crossing.to.x, SITE.crossing.to.z, 200, 'creek']];
+      const cBank = lin(0x3d3122), cWet = lin(0x2b2218), cBed = lin(0x211a13), cSand = lin(0x8a7b5f), cRockBed = lin(0x4a4338);
+      const gc = [0, 0, 0], tc = new THREE.Color(), tg = new THREE.Color(), rs = mulberry32(6891), stones = [];
+      // the cross-section from the -n side to the +n side, in fractions of that side's half-width: ground, lip, wet
+      // bank, bed, centre, bed, wet bank, lip, ground
+      const OF = [-2.1, -1.4, -1.0, -0.5, 0, 0.5, 1.0, 1.4, 2.1];
+      const put = (v) => { pos.push(v[0], v[1], v[2]); col.push(v[3], v[4], v[5]); };
+      starts.forEach(([sx, sz, len, kind], si) => {
+        const raw = trace(sx, sz, len); if (raw.length < 8) return;
+        const gully = kind === 'gully', N = raw.length;
+        // a slow wander across the draw, so the bed doesn't run ruler-straight down the fall line
+        const pts = raw.map((p, i) => {
+          const pa = raw[Math.max(0, i - 2)], pb = raw[Math.min(N - 1, i + 2)], dx = pb[0] - pa[0], dz = pb[1] - pa[1], l = Math.hypot(dx, dz) || 1;
+          const o = ((vnoise(i * 0.06 + si * 13, 0.7) - 0.5) * 3.6 + (vnoise(i * 0.2 + si * 5, 2.9) - 0.5) * 0.8) * Math.min(1, i / 6);
+          const x = p[0] - dz / l * o, z = p[1] + dx / l * o;
+          return [x, z, gy(x, z)];   // x, z, and the ground's height for tools
+        });
+        pts.kind = kind;
         STREAMS.push(pts);
-        for (let i = 1; i < pts.length; i++) {
-          const [x0, z0] = pts[i - 1], [x1, z1] = pts[i];
-          const n = vnoise(i * 0.09 + x * 0.01, 3.1);
-          const dx = x1 - x0, dz = z1 - z0, l = Math.hypot(dx, dz) || 1, nx = -dz / l, nz = dx / l;
-          const wb = 0.5 + 0.35 * n, ww = 0.25 + 0.35 * n;
-          const quad = (arr, w, lift, c) => {
-            const A = [x0 + nx * w, z0 + nz * w], B = [x0 - nx * w, z0 - nz * w], Cc = [x1 + nx * w, z1 + nz * w], D = [x1 - nx * w, z1 - nz * w];
-            const v = (p) => { arr.push(p[0], gy(p[0], p[1]) + lift, p[1]); if (c) col.push(c.r, c.g, c.b); };
-            v(A); v(Cc); v(B); v(B); v(Cc); v(D);
-          };
-          quad(pos, wb, 0.05, bed);
-          if (n > 0.42) quad(wpos, ww, 0.1, null);
+        // frames: tangent t, normal n (t turned toward +z from +x), bend k (> 0 turns toward +n, so +n is the inside),
+        // half-widths each side, and presence pr (0: the channel fades out into the forest floor)
+        const F = pts.map((p, i) => {
+          const pa = pts[Math.max(0, i - 1)], pb = pts[Math.min(N - 1, i + 1)];
+          let tx = pb[0] - pa[0], tz = pb[1] - pa[1]; const l = Math.hypot(tx, tz) || 1; tx /= l; tz /= l;
+          return { x: p[0], z: p[1], tx, tz, nx: -tz, nz: tx };
+        });
+        F.forEach((f, i) => {
+          let k = 0;
+          for (let d = -3; d <= 3; d++) { const a0 = F[clamp(i + d - 1, 0, N - 1)], a1 = F[clamp(i + d + 1, 0, N - 1)]; k += a0.tx * a1.tz - a0.tz * a1.tx; }
+          f.k = k / 7;
+          const n = vnoise(i * 0.13 + si * 7, 4.4), w = gully ? 0.8 + 1.4 * n : 0.45 + 1.5 * n;
+          const taper = sstep(0, 6, i) * sstep(0, 6, N - 1 - i);
+          f.wp = w * (0.7 + 0.6 * vnoise(i * 0.31, si + 1.1)) * (0.4 + 0.6 * taper);
+          f.wn = w * (0.7 + 0.6 * vnoise(i * 0.29, si + 6.3)) * (0.4 + 0.6 * taper);
+          f.pr = sstep(0.18, 0.5, vnoise(i * 0.06 + si * 3, 8.2)) * taper;
+          if (gully) f.pr = Math.max(f.pr, 0.6 * taper);
+        });
+        // still pools in the low spots of a creek (two at most, 50 m apart); the bed is full and wide round them
+        const pools = [];
+        if (!gully) {
+          const yAt = (i) => { const f = F[clamp(i, 0, N - 1)]; return gy(f.x, f.z); };
+          const cand = []; for (let i = 6; i < N - 4; i++) if (yAt(i) <= yAt(i - 3) && yAt(i) <= yAt(i + 3)) cand.push([yAt(i), i]);
+          cand.sort((p, q) => p[0] - q[0]);
+          for (const [, i] of cand) { if (pools.length >= 2) break; if (pools.every((j) => Math.abs(j - i) > 25)) pools.push(i); }
         }
+        pts.pools = pools.map((i) => pts[i]);
+        F.forEach((f, i) => {
+          const pn = pools.reduce((m, j) => Math.min(m, Math.abs(j - i)), 99);
+          if (pn < 4) { const k = 1 - pn / 4; f.pr = Math.max(f.pr, k); f.wp *= 1 + 0.4 * k; f.wn *= 1 + 0.4 * k; }
+        });
+        // the channel
+        const lip = gully ? 0.34 : 0.26, LIFT = [0.05, lip, lip * 0.5, 0.07, 0.06, 0.07, lip * 0.5, lip, 0.05];   // over the ground mesh's folds
+        const rows = F.map((f) => OF.map((o, j) => {
+          const w = o < 0 ? f.wn : f.wp, x = f.x + f.nx * o * w, z = f.z + f.nz * o * w, ao = Math.abs(o), m = vnoise(x * 0.8 + si, z * 0.8);
+          groundCol(x, z, gc); tg.setRGB(gc[0], gc[1], gc[2]);
+          if (ao > 2) tc.copy(tg);
+          else if (ao > 1.2) tc.copy(cBank).lerp(tg, 0.35 + 0.3 * m);
+          else if (ao > 0.9) tc.copy(cWet).lerp(cBank, 0.4 * m);
+          else tc.copy(gully ? cRockBed : cBed).lerp(gully ? cBank : cWet, 0.5 * m);
+          if (!gully && ao > 0.2 && ao < 1.2 && Math.sign(o) === Math.sign(f.k)) tc.lerp(cSand, sstep(0.08, 0.22, Math.abs(f.k)) * (0.6 + 0.4 * m));
+          if (ao <= 2) tc.lerp(tg, 1 - f.pr);
+          return [x, gy(x, z) + (ao > 2 ? LIFT[j] : 0.05 + (LIFT[j] - 0.05) * f.pr), z, tc.r, tc.g, tc.b];
+        }));
+        for (let i = 1; i < N; i++) for (let j = 0; j < OF.length - 1; j++) {
+          const A = rows[i - 1][j + 1], B = rows[i - 1][j], C = rows[i][j + 1], D = rows[i][j];
+          put(A); put(C); put(B); put(B); put(C); put(D);
+        }
+        // pools: flat water at the low end of the hollow; the higher ground and the lips hide the rest of the disc
+        for (const i of pools) {
+          const f = F[i], al = 1.4 + 1.2 * rs(), ac = Math.min(1.5, 0.35 + 0.5 * (f.wp + f.wn)), S = 12, rim = [];
+          let ymin = 1e9;
+          for (let s = 0; s < S; s++) {
+            const th = s / S * TAU, rr = 0.75 + 0.35 * vnoise(s * 0.9 + i, si * 2.3);
+            const u = Math.cos(th) * al * rr, v = Math.sin(th) * ac * rr, x = f.x + f.tx * u + f.nx * v, z = f.z + f.tz * u + f.nz * v;
+            rim.push([x, z]); ymin = Math.min(ymin, gy(x, z));
+          }
+          const wy = ymin + 0.16;
+          for (let s = 0; s < S; s++) { const p0 = rim[s], p1 = rim[(s + 1) % S]; wpos.push(f.x, wy, f.z, p1[0], wy, p1[1], p0[0], wy, p0[1]); }
+        }
+        // the gully's trickle: broken threads of water down its lower half
+        if (gully) for (let i = Math.floor(N * 0.45) + 1; i < N; i++) {
+          const n0 = vnoise((i - 1) * 0.15, 9.1), n1 = vnoise(i * 0.15, 9.1); if (n0 < 0.45 || n1 < 0.45) continue;
+          const P = (f, n, s) => { const w = (0.08 + 0.6 * (n - 0.45)) * s, x = f.x + f.nx * w, z = f.z + f.nz * w; return [x, gy(x, z) + 0.1, z]; };
+          const A = P(F[i - 1], n0, 1), B = P(F[i - 1], n0, -1), C = P(F[i], n1, 1), D = P(F[i], n1, -1);
+          wpos.push(...A, ...C, ...B, ...B, ...C, ...D);
+        }
+        // stones along the bed and the bank toes (the gully is all stone)
+        F.forEach((f) => {
+          const n = gully ? 2 + (rs() < 0.6 ? 1 : 0) + (rs() < 0.4 ? 1 : 0) : (rs() < 0.4 + 0.5 * f.pr ? 1 : 0) + (rs() < 0.7 * f.pr ? 1 : 0) + (rs() < 0.4 * f.pr ? 1 : 0);
+          for (let k = 0; k < n; k++) {
+            const side = rs() < 0.5 ? -1 : 1, w = side < 0 ? f.wn : f.wp;
+            const o = side * (gully ? rs() * 1.15 : (rs() < 0.6 ? 0.75 + rs() * 0.45 : rs() * 0.7)), al = (rs() - 0.5) * 2;
+            const x = f.x + f.nx * o * w + f.tx * al, z = f.z + f.nz * o * w + f.tz * al;
+            const r = (gully ? 0.25 + Math.pow(rs(), 1.4) * 0.6 : 0.2 + Math.pow(rs(), 1.3) * 0.4) / 2;
+            // on the channel's own surface there (the lips stand above the ground), a third sunk
+            const ao = Math.abs(o), j = ao < 0.5 ? 0 : ao < 1 ? 1 : 2, lo = [0, 0.5, 1, 1.4][j], hi = [0, 0.5, 1, 1.4][j + 1];
+            const lift = LIFT[4 + j] + (LIFT[5 + j] - LIFT[4 + j]) * (ao - lo) / (hi - lo);
+            stones.push([x, gy(x, z) + 0.05 + (lift - 0.05) * f.pr - r * 0.21, z, r, rs() * TAU, rs(), ao < 0.65 ? 1 : 0]);
+          }
+        });
+      });
+      // one draw for all the stones: jittered icosahedra with the normals of the sphere they came from (rounded),
+      // flattened, partly sunk; grey-brown, darker where wet in the bed
+      if (stones.length) {
+        const sg = ctx.jitterGeo(new THREE.IcosahedronGeometry(1, 0), 0.32, 17), sp = sg.attributes.position, nv = new THREE.Vector3();
+        for (let i = 0; i < sp.count; i++) { nv.set(sp.getX(i), sp.getY(i), sp.getZ(i)).normalize(); sg.attributes.normal.setXYZ(i, nv.x, nv.y, nv.z); }
+        const im = new THREE.InstancedMesh(sg, new THREE.MeshStandardMaterial({ roughness: 0.88, metalness: 0 }), stones.length);
+        const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), pv = new THREE.Vector3(), sv = new THREE.Vector3();
+        const sc = [lin(0x4f483e), lin(0x413a31), lin(0x5b5447), lin(0x4a3e30)];
+        stones.forEach(([x, y, z, r, rot, sh, wet], i) => {
+          e.set((sh - 0.5) * 0.5, rot, (rs() - 0.5) * 0.5); q.setFromEuler(e);
+          m4.compose(pv.set(x, y, z), q, sv.set(r * (0.9 + 0.3 * sh), r * 0.7, r * (1.2 - 0.3 * sh))); im.setMatrixAt(i, m4);
+          tc.copy(sc[Math.floor(sh * 4) % 4]).multiplyScalar(wet ? 0.72 : 1); im.setColorAt(i, tc);
+        });
+        im.instanceMatrix.needsUpdate = true; im.instanceColor.needsUpdate = true;
+        ctx.root.add(im);
       }
+      window.LAND = window.LAND || {};
+      window.LAND.streams = STREAMS;
     }
 
     // ======================= lanes =======================
@@ -361,6 +481,70 @@
       tx.magFilter = THREE.LinearFilter; tx.minFilter = THREE.LinearFilter; tx.needsUpdate = true;
       return tx;
     })();
+    // ----- Hill 689's crest after eight days (fix pass, hill689): bare trodden laterite inside the line, grass left in
+    // patches between the holes and hooches, the holes' spoil, a cleared and trodden band outside the holes (fields of
+    // fire), standing grass beyond. works.js loads after land.js, so the crest is re-baked once window.WORKS is there
+    // (WORKS.grassPatch, WORKS.pathAt, WORKS.paths); until then the old bake stands.
+    let perimBaked = false;
+    function perimCell(x, z, k) {
+      const r6 = Math.hypot(x - CP.x, z - CP.z);
+      if (r6 >= 110) return;
+      const W = window.WORKS, c = BK.cls[k], rp = P.rAt(bearingOf(x, z)), n = vnoise(x * 0.3, z * 0.3), n2 = vnoise(x * 0.11 + 7, z * 0.11 - 3);
+      let cov = sstep(0.38, 0.72, c) * clamp(0.6 + 0.6 * fbm(x * 0.05 + 3, z * 0.05 - 2), 0, 1), dust, tall;
+      if (r6 < rp - 2.5) {
+        const pa = W.grassPatch(x, z), onPath = 1 - sstep(-0.3, 0.8, W.pathAt(x, z));
+        cov = Math.max(cov, 0.55) * pa * (0.75 + 0.25 * n);
+        tall = 0.42 + 0.2 * n2;
+        dust = clamp(0.7 + 0.25 * n - 0.45 * pa + 0.3 * onPath, 0, 1);
+      } else if (r6 < rp + 2.5) {
+        cov = 0; tall = 0.4; dust = 0.8 + 0.15 * n;                                                  // the holes and their spoil
+      } else {
+        const u = r6 - rp;                                                                           // the cleared band outside
+        cov *= (0.18 + 0.5 * sstep(0.45, 0.7, n2)) * (1 - sstep(10, 22, u)) + sstep(10, 22, u) * (0.45 + 0.55 * sstep(22, 32, u));
+        tall = 0.3 + 0.25 * n + 0.45 * sstep(9, 26, u);
+        dust = (1 - sstep(6, 14 + 4 * n, u)) * (0.5 + 0.3 * n);
+      }
+      for (const z0 of LZS) { const q = Math.hypot(x - z0.p.x, z - z0.p.z) / z0.r; cov *= z0.cov + (1 - z0.cov) * sstep(0.7, 1.3, q); dust = Math.max(dust, z0.dust * (1 - sstep(0.6, 1.1, q))); }
+      BK.cover[k] = cov; BK.dust[k] = dust; BK.tall[k] = tall;
+    }
+    function bakePerim() {
+      const W = window.WORKS;
+      if (perimBaked || !W || !W.grassPatch || !W.paths) return false;
+      perimBaked = true;
+      const d = coverTex.image.data;
+      for (let j = 0; j < BK.h; j++) for (let i = 0; i < BK.w; i++) {
+        const k = j * BK.w + i, x = BK.x0 + i * BK.res, z = BK.z0 + j * BK.res;
+        if (Math.hypot(x - CP.x, z - CP.z) >= 110) continue;
+        perimCell(x, z, k);
+        craterAt(x, z);
+        d[k * 4] = Math.round(255 * BK.cover[k] * sstep(0.7, 1.15, CQ)); d[k * 4 + 1] = Math.round(255 * BK.dust[k]);
+      }
+      coverTex.needsUpdate = true;
+      // the crest's fine ground at 0.25 m: R the paths, G darker churned earth, B pale dust (in the ground shader)
+      const S = 136, ppm = 4, N = S * ppm, cv = document.createElement('canvas'); cv.width = cv.height = N;
+      const g = cv.getContext('2d'), rnd = mulberry32(80468), px = (v) => (v + S / 2) * ppm;
+      g.fillStyle = '#000'; g.fillRect(0, 0, N, N);
+      g.globalCompositeOperation = 'lighter';
+      const blot = (x, z, r, rgb) => { const gr = g.createRadialGradient(px(x), px(z), 0, px(x), px(z), r * ppm); gr.addColorStop(0, `rgba(${rgb},1)`); gr.addColorStop(1, `rgba(${rgb},0)`); g.fillStyle = gr; g.beginPath(); g.arc(px(x), px(z), r * ppm, 0, Math.PI * 2); g.fill(); };
+      for (let i = 0; i < 1400; i++) {
+        const a = rnd() * Math.PI * 2, r = Math.sqrt(rnd()) * 66, x = Math.cos(a) * r, z = Math.sin(a) * r;
+        if (r > P.rAt(bearingOf(x, z)) + 12) continue;
+        const sz = 0.6 + rnd() * 2.6;
+        blot(x, z, sz, rnd() < 0.55 ? `0,${Math.round(40 + rnd() * 50)},0` : `0,0,${Math.round(40 + rnd() * 60)}`);
+      }
+      g.globalCompositeOperation = 'source-over';
+      g.lineCap = g.lineJoin = 'round'; g.filter = 'blur(2px)';
+      for (const p of W.paths) { g.strokeStyle = 'rgba(255,0,0,0.62)'; g.lineWidth = p.w * ppm * (0.8 + rnd() * 0.3); g.beginPath(); g.moveTo(px(p.a[0]), px(p.a[1])); g.lineTo(px(p.b[0]), px(p.b[1])); g.stroke(); }
+      g.filter = 'none';
+      const im = g.getImageData(0, 0, N, N);
+      perimTex.image = { data: new Uint8Array(im.data.buffer), width: N, height: N };
+      perimTex.needsUpdate = true;
+      GU.uLPerim.value.set(-S / 2, -S / 2, 1 / S, 1 / S);
+      for (const T of TIERS) { T.map.clear(); T.next = 0; T.stamp.fill(-1); }
+      return true;
+    }
+    const perimTex = new THREE.DataTexture(new Uint8Array(4), 1, 1, THREE.RGBAFormat);
+    perimTex.magFilter = THREE.LinearFilter; perimTex.minFilter = THREE.LinearFilter; perimTex.needsUpdate = true;
     // lanes: R = trampled, G = the chapter from which (16 per chapter, 255 none), 0.25 m per pixel over their box
     const LB = (() => {
       let x0 = 1e9, z0 = 1e9, x1 = -1e9, z1 = -1e9;
@@ -389,6 +573,7 @@
       uLLaneTex: { value: LB.tx }, uLLane: { value: new THREE.Vector4(LB.x0, LB.z0, 1 / LB.w, 1 / LB.d) },
       uLLitter: { value: lin(0x3e3826) }, uLLat: { value: lin(0x7c4e34).multiplyScalar(0.85) }, uLDust: { value: lin(0x9c8062).multiplyScalar(0.85) }, uLLaneCol: { value: lin(0x6e4a34) },
       uChA: CHS.a, uChB: CHS.b, uChK: CHS.k,
+      uLPerimTex: { value: perimTex }, uLPerim: { value: new THREE.Vector4(0, 0, 0, 0) },
     };
     Object.assign(GU, GRADE);
     if (groundMesh) {
@@ -397,7 +582,7 @@
       gm.onBeforeCompile = (sh, r) => {
         if (prev) prev.call(gm, sh, r);
         Object.assign(sh.uniforms, GU);
-        sh.fragmentShader = 'uniform sampler2D uLCover; uniform vec4 uLTile; uniform sampler2D uLLaneTex; uniform vec4 uLLane; uniform vec3 uLLitter; uniform vec3 uLLat; uniform vec3 uLDust; uniform vec3 uLLaneCol; uniform float uChA; uniform float uChB; uniform float uChK;\n' + GLSL_GRADE +
+        sh.fragmentShader = 'uniform sampler2D uLCover; uniform vec4 uLTile; uniform sampler2D uLLaneTex; uniform vec4 uLLane; uniform vec3 uLLitter; uniform vec3 uLLat; uniform vec3 uLDust; uniform vec3 uLLaneCol; uniform float uChA; uniform float uChB; uniform float uChK; uniform sampler2D uLPerimTex; uniform vec4 uLPerim;\n' + GLSL_GRADE +
           sh.fragmentShader.replace('#include <color_fragment>', `#include <color_fragment>
           {
             vec2 cuv = (vWPos.xz - uLTile.xy) * uLTile.zw;
@@ -428,6 +613,19 @@
             float gl2 = dot(flatC, vec3(0.299, 0.587, 0.114));
             flatC = mix(flatC, vec3(gl2) * uGGTint, uGGround);
             diffuseColor.rgb = mix(diffuseColor.rgb, mix(flatC, mix(flatC, lat, 0.25 * mott), smoothstep(0.75, 0.98, lv.r)), lane * 0.85);
+            // Hill 689's crest: churned earth, pale dust, and the paths trodden dark between the holes (fix pass, hill689)
+            vec2 puv = (vWPos.xz - uLPerim.xy) * uLPerim.zw;
+            float inP = step(0.0, puv.x) * step(puv.x, 1.0) * step(0.0, puv.y) * step(puv.y, 1.0) * step(0.0001, uLPerim.z);
+            vec4 pv = texture2D(uLPerimTex, puv) * inP;
+            float bare = cv.g;
+            vec3 pc = diffuseColor.rgb;
+            pc = mix(pc, pc * vec3(0.8, 0.68, 0.55), pv.g * bare * 1.1);
+            pc = mix(pc, gradeLat(uLDust) * vec3(1.25, 1.18, 1.05), pv.b * bare * 0.75);
+            vec3 trod = mix(gradeLat(uLLat), gradeLat(uLLaneCol), 0.5) * vec3(0.9, 0.85, 0.78);
+            float glt = dot(trod, vec3(0.299, 0.587, 0.114));
+            trod = mix(trod, vec3(glt) * uGGTint, uGGround);
+            pc = mix(pc, trod, pv.r * 0.6);
+            diffuseColor.rgb = pc;
           }`);
       };
       gm.needsUpdate = true;
@@ -438,7 +636,7 @@
     {
       const rnd = mulberry32(1968416);
       const near = (x, z, p, r) => Math.hypot(x - p.x, z - p.z) < r;
-      const streamNear = (x, z, r) => { for (const s of STREAMS) for (let i = 0; i < s.length; i += 2) if (Math.abs(s[i][0] - x) < r && Math.abs(s[i][1] - z) < r && Math.hypot(s[i][0] - x, s[i][1] - z) < r) return true; return false; };
+      const streamNear = (x, z, r, st = 2) => { for (const s of STREAMS) for (let i = 0; i < s.length; i += st) if (Math.abs(s[i][0] - x) < r && Math.abs(s[i][1] - z) < r && Math.hypot(s[i][0] - x, s[i][1] - z) < r) return true; return false; };
       const trees = [[], [], []];   // per crown variant: x, y, z, H, R, rot, shade
       const tcol = [lin(0x3f6a3a).multiplyScalar(0.62), lin(0x2c4a2c).multiplyScalar(0.62), lin(0x4f7a40).multiplyScalar(0.62), lin(0x6a7438).multiplyScalar(0.62)];
       // a trail through the forest where a lane crosses it (fix pass: the columns of chapters 2, 5 and 8 were invisible
@@ -458,7 +656,7 @@
         const c = out ? landCls(px, pz) : bk(BK.cls, px, pz);
         if (c > 0.48 || rnd() > Math.pow(1 - c / 0.48, 0.6) * 0.92) continue;
         if (near(px, pz, CP, P.rMax + 12) || near(px, pz, SITE.lz689, 16)) continue;
-        if (!out && streamNear(px, pz, 2.2)) continue;
+        if (!out && streamNear(px, pz, 1.1, 1)) continue;   // no trunk in the bed; crowns may close over it
         const tp = L.tpi(px, pz), H = (10 + 5 * sstep(4, -14, tp) + rnd() * 3) * (out ? 1.15 : 1);
         addTree(px, pz, H, H * (0.3 + rnd() * 0.08) * (out ? 1.3 : 1), out ? 0 : (rnd() < 0.55 ? 0 : rnd() < 0.6 ? 1 : 2), !out && (c > 0.15 || rnd() < 0.2));
       }
@@ -470,6 +668,19 @@
         const x = ax + dx / l * off + (rnd() - 0.5) * 3, z = az + dz / l * off + (rnd() - 0.5) * 3;
         if (CR.some((c) => Math.hypot(c.x - x, c.z - z) < c.r * 1.5)) continue;
         const H = 8 + rnd() * 4; addTree(x, z, H, H * 0.32, rnd() < 0.5 ? 2 : 0, true); TL.push([x, z]);
+      }
+      // trees on the stream banks in the forest, so the canopy closes over the creeks and they show only in glimpses
+      // (fix pass 2026-11-09); their own random stream, so every other tree keeps its place
+      {
+        const rs = mulberry32(4417);
+        for (const s of STREAMS) for (let i = 3; i < s.length - 3; i += 4) {
+          const side = rs() < 0.5 ? -1 : 1, d = 1.6 + rs() * 2.5, tx = s[i + 1][0] - s[i][0], tz = s[i + 1][1] - s[i][1], l = Math.hypot(tx, tz) || 1;
+          const x = s[i][0] - tz / l * d * side, z = s[i][1] + tx / l * d * side;
+          const H = 9 + rs() * 4, R = H * (0.32 + rs() * 0.08), v = rs() < 0.5 ? 0 : rs() < 0.6 ? 1 : 2, rot = rs() * TAU, sh = rs();
+          if (rs() > 0.75 || !inTile(x, z) || bk(BK.cls, x, z) > 0.45) continue;
+          if (near(x, z, CP, P.rMax + 12) || overLane(x, z, R) || inLZ(x, z, R)) continue;
+          trees[v].push([x, gy(x, z), z, H, R, rot, sh, 1]);
+        }
       }
       // crowns: faceted icosahedra, shade baked darker underneath
       const shadeGeo = (g) => {
@@ -1238,6 +1449,7 @@
     let started = false, gradeT = null;
     return function update(t) {
       if (!started) started = true;
+      bakePerim();
       const clrNew = watchClearings();
       if (ctx.chapter.id !== curCh) chapterChanged(ctx.chapter.id, t);
       const k = sstep(0, 1, (t - chFadeAt) / 1.6);
