@@ -1212,24 +1212,38 @@
     const FIRE = window.FIRE;
     const mpos = v3(0, 0, 0), mdir = v3(0, 0, 0);
     let nBursts = 0;
+    // a man fires only holding still in a firing position (standing, kneeling, crouched or prone with the rifle up),
+    // never walking, running, crawling, dragging, hit or lying hurt, and only with his rifle pointed within 35 degrees
+    // of what he fires at (fix pass: "gun shots come from nowhere")
+    const FIRING = /^(Rifle Idle|Rifle Kneel Idle|Idle Crouching|Crouch Idle 02 Looking Around|Prone Idle)$/;
+    let nSkip = 0;
     if (FIRE && FIRE.burst) {
       for (const Ac of actors) for (const e of Ac.fire) {
         poseAt(Ac, e.ch, e.t, S1);
         if (S1.hidden) continue;
+        let main = '', mw = 0, tot = 0; for (let j = 0; j < S1.n; j++) { tot += S1.ws[j]; if (S1.ws[j] > mw) { mw = S1.ws[j]; main = S1.clips[j]; } }
+        if (!FIRING.test(main) || mw < 0.85 * tot || S1.ghost || (Ac.dragged && Ac.dragged[e.ch]) || (Ac.dragOf && Ac.dragOf[e.ch])) { nSkip++; continue; }
         apply(Ac, S1); Ac.f.F.root.visible = true;
+        // measured with the rifle up on the target, as he will hold it for the burst (aimAt below)
+        Ac.f.aimAt = e.target; Ac.f.aimK = 1; Ac.f.kick = 0;
         CM.update(Ac.f, 1 / 30, e.t); CM.update(Ac.f, 1 / 30, e.t);
+        Ac.f.aimK = 0;
         if (!CM.muzzle(Ac.f, mpos, mdir)) continue;
-        FIRE.burst(mpos.clone(), mdir.clone(), e.n, { at: e.t, ch: e.ch, side: 'us', to: e.target, sc: 2.2 });
-        nBursts++;
+        if (mdir.angleTo(e.target.clone().sub(mpos)) > 0.61) { nSkip++; continue; }
+        FIRE.burst(mpos.clone(), mdir.clone(), e.n, { at: e.t, ch: e.ch, side: 'us', to: e.target, sc: 2.2, src: 'AD:' + Ac.idx });
+        e.ok = true; nBursts++;
       }
       // the snipers' single shots that drop four of Delta's men (DY p. 315), 0.6 s before each fall
       for (const i in deltaDown) {
         const Ac = D[i], tf = deltaDown[i];
         poseAt(Ac, 7, tf - 0.1, S1);
-        const sp = snipers[i % 2], from = v3(sp[0], G(sp[0], sp[1]) + 1.4, sp[1]);
+        // from a slit the chapter camera sees at that moment (FIRE.sniperFrom), else a glint on the ridge in frame,
+        // so the flash comes before he falls; the old fixed sniper points stay only as the last resort
         const to = v3(S1.x, G(S1.x, S1.z) + 1.35, S1.z);
+        const sp = snipers[i % 2], src = FIRE.sniperFrom ? FIRE.sniperFrom(to, 7, tf - 0.8) : null;
+        const from = src ? v3(src.pos.x, src.pos.y, src.pos.z) : v3(sp[0], G(sp[0], sp[1]) + 1.4, sp[1]);
         const tt = from.distanceTo(to) / (FIRE.speed || 170);
-        FIRE.burst(from, null, 1, { at: tf - 0.15 - tt, ch: 7, side: 'nva', to, fs: 0.6, sc: 0.3 });
+        FIRE.burst(from, null, 1, { at: tf - 0.15 - (src && src.glint ? 0.45 : tt), ch: 7, side: 'nva', to, fs: 0.9, sc: 0.3, tracer: !(src && src.glint), src: 'sniperAD:' + (src ? (src.glint ? 'glint:' : 'slit:') + src.id : 'fixed') });
       }
       for (const Ac of actors) Ac.f.F.root.visible = false;
     }
@@ -1349,6 +1363,23 @@
         CM.grip(Ac.f, _dl, _dr, { lean: 0.45 });
       }
     }
+    // the kick of a man's own burst (rate 9): the rifle climbs and comes back a little with each round
+    function kickAt(Ac, ch, t) {
+      let k = 0;
+      for (const e of Ac.fire) { if (!e.ok || e.ch !== ch || t < e.t || t > e.t + e.n / 9 + 0.35) continue; for (let i = 0; i < e.n; i++) { const a = t - (e.t + i / 9); if (a >= 0) k += Math.exp(-a * 22); } }
+      return k;
+    }
+    // before a burst he brings the rifle up onto the target and holds it there to the end (CM's f.aimAt / f.aimK)
+    function aimFor(Ac, ch, t) {
+      Ac.f.aimK = 0;
+      for (const e of Ac.fire) {
+        if (!e.ok || e.ch !== ch) continue;
+        const a = t - (e.t - 0.45), b = t - (e.t + e.n / 9 + 0.25);
+        if (a < 0 || b > 0.35) continue;
+        Ac.f.aimAt = e.target; Ac.f.aimK = sm(a / 0.3) * (1 - sm(b / 0.35)); break;
+      }
+      return Ac.f.aimK;
+    }
     // ---------- per frame ----------
     const frustum = new THREE.Frustum(), pm = new THREE.Matrix4(), sph = new THREE.Sphere(v3(0, 0, 0), 2.2);
     let frameN = 0, lastCh = -1;
@@ -1381,10 +1412,11 @@
         Ac.acc += dt;
         if (!inView && !jump) { if (root.visible) root.visible = false; continue; }
         const inDrag = (Ac.dragOf && Ac.dragOf[ch]) || (Ac.dragged && Ac.dragged[ch]);
-        const every = inDrag ? 1 : dist < 40 ? 1 : dist < 120 ? 2 : 3;
+        const every = inDrag || aimFor(Ac, ch, t) > 0.01 ? 1 : dist < 40 ? 1 : dist < 120 ? 2 : 3;
         if (!jump && root.visible && (frameN + Ac.idx) % every) continue;
         if (Ac.dragOf && Ac.dragOf[ch]) dragPlace(Ac.dragOf[ch], t, S);
         apply(Ac, S);
+        Ac.f.kick = kickAt(Ac, ch, t); aimFor(Ac, ch, t);
         CM.update(Ac.f, Math.min(0.25, Ac.acc), tAbs);
         Ac.acc = 0; nu++; Ac.updN = frameN;
         root.visible = true;
@@ -1401,7 +1433,7 @@
       PON.m.count = np; PON.m.instanceMatrix.needsUpdate = true;
       plug.stats.updated = nu; plug.stats.visible = nv; plug.stats.ms += (performance.now() - tm0 - plug.stats.ms) * 0.05;
     };
-    console.log(NAME + ': ' + actors.length + ' figures, ' + Math.round(nTris / 1000) + 'k triangles built, ' + nBursts + ' bursts on FIRE, built in ' + Math.round(performance.now() - t0Build) + ' ms');
+    console.log(NAME + ': ' + actors.length + ' figures, ' + Math.round(nTris / 1000) + 'k triangles built, ' + nBursts + ' bursts on FIRE (' + nSkip + ' skipped: not in a firing position or not aimed), built in ' + Math.round(performance.now() - t0Build) + ' ms');
     markReady();
   }
 })();

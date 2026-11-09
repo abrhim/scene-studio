@@ -628,6 +628,7 @@
   const MAP_IN_HAND = new THREE.Matrix4().compose(V(-0.06, -0.08, 0.05), new THREE.Quaternion().setFromEuler(new THREE.Euler(0.2, 0.3, 1.25)), V(1, 1, 1));
   function setProp(f, bone, W) { _m2.copy(f.F.mesh.matrixWorld).invert().multiply(W); _m2.decompose(bone.position, bone.quaternion, _v4); bone.scale.copy(_v4); bone.updateMatrixWorld(true); }
   // palm centres in each hand's frame (bind: fingers down, the palm facing the thigh)
+  const KICK_AX = V(0, 0, 1), KICK_V = V(0, 0, 0), AIM_D = V(0, 0, 0), AIM_Q = new THREE.Quaternion(), AIM_I = new THREE.Quaternion();
   const PALM = { Left: V(-0.016, -0.066, 0.008), Right: V(0.016, -0.066, 0.008) };
   const R_ = { p: V(0, 0, 0), q: new THREE.Quaternion(), qa: new THREE.Quaternion(), W: new THREE.Matrix4(), Ws: new THREE.Matrix4(), tgt: V(0, 0, 0), pole: V(0, 0, 0), qR: new THREE.Quaternion(), qL: new THREE.Quaternion() };
   const snapArm = (f, s) => [MB(s + 'Arm'), MB(s + 'ForeArm'), MB(s + 'Hand')].map((n) => f.b[n].quaternion.clone());
@@ -682,6 +683,15 @@
       else { const p1 = V(0, 0, 0), q1 = new THREE.Quaternion(), p2 = V(0, 0, 0), q2 = new THREE.Quaternion(); R_.W.decompose(p1, q1, _v4); R_.Ws.decompose(p2, q2, _v4); W.compose(p1.lerp(p2, 1 - hold), q1.slerp(q2, 1 - hold), _v4.set(1, 1, 1)); }
       const pW = V(0, 0, 0), qW = new THREE.Quaternion(); W.decompose(pW, qW, _v4);
       if (on('rifle')) { const q = qSpring(f.sp.rifle, qW, 355, 17, dt, 0.08); qW.copy(q); } else f.sp.rifle.init = false;
+      // a shot's kick (f.kick, set by the plug-in that fires him, about 1 at the instant of a round): the muzzle climbs
+      // and the rifle comes back into the shoulder; the hands follow it by the IK below
+      // a man firing (f.aimAt, a world point, with weight f.aimK 0-1, set by the plug-in): the held rifle turns about its
+      // grip until the barrel points at it (at most 80 degrees), so the rifle comes up from the clip's carry to the aim
+      if (f.aimK > 0.002 && f.aimAt && hold > 0.5 && !dropping) {
+        KICK_V.set(1, 0, 0).applyQuaternion(qW); AIM_D.copy(f.aimAt).sub(pW).normalize();
+        if (KICK_V.angleTo(AIM_D) < 1.4) { AIM_Q.setFromUnitVectors(KICK_V, AIM_D); AIM_I.identity().slerp(AIM_Q, Math.min(1, f.aimK)); qW.premultiply(AIM_I); }
+      }
+      if (f.kick > 0.002 && hold > 0.5 && !dropping) { _q2.setFromAxisAngle(KICK_AX, Math.min(1.6, f.kick) * 0.075); qW.multiply(_q2); pW.addScaledVector(KICK_V.set(1, 0, 0).applyQuaternion(qW), -0.035 * Math.min(1.6, f.kick) * f.scale); }
       if (dropping && on('rifle')) {
         if (!f.drop || f.drop.act !== dropping) {
           // where it lets go, and where it comes to rest: flat on the ground on its side, barrel the way it pointed

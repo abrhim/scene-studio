@@ -38,7 +38,7 @@
 //   8  1900   dusk: a file of 30 with four poncho litters and a walking wounded, about 3 m apart, goes down the withdrawal lane, fading out past
 //             the LZ by 87; Hunnicutt leaves his crater, Low Crawl 9-50 to Himmer, kneels 50.5 and stays
 //   9  0100   Himmer still, breathing; Hunnicutt beside him low; prone at 12.3 and 35.3 facing the slit; his shots (fire.js)
-//             at 14.5, 15.3, 38.0, 38.6, 80.5; the grenade leaves his hand at 40.8 (burst 42.0); crouched again from 90
+//             at 14.5, 15.3, 36.6, 37.2, 80.5 (his own rifle, fix pass); the grenade leaves his hand at 40.8 (burst 42.0); crouched again from 90
 //   10 0530   Hunnicutt kneels at his captain's head 5-8, moves him a metre at a time to the crater cover 8.5-58 (each
 //             metre 2.4 s moving and 1.6 s still), then crawls east toward the gully 62-76 and is gone into the grass;
 //             Himmer in cover, alone, breathing, to the end
@@ -243,6 +243,8 @@
       const c = W.slits.map((s) => s.pos).filter((p) => { const d = Math.hypot(p.x - S.himmerFall.x, p.z - S.himmerFall.z); return d >= 15 && d <= 60; })
         .sort((a, b) => Math.hypot(a.x - S.himmerFall.x, a.z - S.himmerFall.z) - Math.hypot(b.x - S.himmerFall.x, b.z - S.himmerFall.z));
       if (c[0]) slit9 = xz(c[0]);
+      const f9 = window.FIRE && window.FIRE.s9 ? window.FIRE.s9() : null;   // fire.js's own choice (the one its camera frames)
+      if (f9) slit9 = [f9.x, f9.z];
     }
     const nearSlits = (W && W.slits && W.slits.length ? W.slits.map((s) => s.pos) : S.bunkerArc).slice()
       .sort((a, b) => Math.hypot(a.x - pause.x, a.z - pause.z) - Math.hypot(b.x - pause.x, b.z - pause.z)).slice(0, 4).map((p) => [p.x, p.y + 0.4, p.z]);
@@ -798,6 +800,8 @@
         .hold(gt0, 'Prone Idle', { face: slit, fade: 0.6 }).hold(gt0 + DUR('Grenade Throw') - 0.1, 'Grenade Throw', { face: slit, fade: 0.25, time: 0 })
         .hold(90, 'Prone Idle', { face: slit, fade: 1.0 }).hold(L, 'Idle Crouching', { face: fallP, fade: 1.4 });
       p.glances.push({ t0: 50, t1: 56, x: fallP[0], z: fallP[1] }, { t0: 100, t1: 108, x: fallP[0], z: fallP[1] });
+      // his single shots back at the slit, from his own rifle while prone (fire.js used to fire them from a fixed point)
+      for (const t of [14.5, 15.3, 36.6, 37.2, 80.5]) p.fires.push({ t, n: 1, to: [slit[0], ground(slit[0], slit[1]) + 0.55, slit[1]] });
       p.seam = false;
       plans.hunnicutt = p.end(L);
       plans.panykaninec = panyPlan(L);
@@ -1039,6 +1043,12 @@
     }
 
     // ---------- the frame ----------
+    // a man fires only when he holds still in a firing position: standing, kneeling, crouched or prone, rifle up;
+    // never walking, running, crawling, carrying, hit or lying hurt
+    const FIRING = /^(Rifle Idle|Rifle Kneel Idle|Idle Crouching|Crouch Idle 02 Looking Around|Prone Idle)$/;
+    const canFire = (seg) => seg && seg.k === 'hold' && FIRING.test(seg.clip) && !seg.down && !seg.carried && !seg.lie;
+    const FSTAT = { fired: 0, pose: 0, aim: 0 };   // his shots this session: fired, held back (not in a firing position), held back (rifle not on the target)
+    if (window.MARINES_C) window.MARINES_C.fireStats = FSTAT;
     let curCh = -1, lastT = -1, frame = 0;
     const firePos = new THREE.Vector3(), fireDir = new THREE.Vector3(), fireTo = new THREE.Vector3();
     st.run = function (tAbs, dt) {
@@ -1082,7 +1092,18 @@
         const d = Math.hypot(f.x - camV.x, f.z - camV.z);
         const every = o.fresh || p.lit ? 1 : d > 90 ? 3 : d > 40 ? 2 : 1;
         o.acc += dt;
-        if ((frame + o.c.seed) % every === 0 || o.fresh) {
+        // before his own burst he brings the rifle up onto what he fires at (f.aimAt, CM), and holds it there until the
+        // burst is done; the kick of each round climbs the muzzle a little (fix pass)
+        f.aimK = 0;
+        if (p.fires.length && canFire(seg)) for (const fr of p.fires) {
+          const a = t - (fr.t - 0.45), b = t - (fr.t + fr.n / 9 + 0.25);
+          if (a < 0 || b > 0.35) continue;
+          f.aimAt = o.aimV || (o.aimV = new THREE.Vector3()); o.aimV.set(fr.to[0], fr.to[1], fr.to[2]);
+          f.aimK = sm(a / 0.3) * (1 - sm(b / 0.35)); break;
+        }
+        f.kick = 0;
+        if (o.kickT0 !== undefined && t >= o.kickT0 && t < o.kickT0 + o.kickN / 9 + 0.35) for (let k = 0; k < o.kickN; k++) { const a = t - (o.kickT0 + k / 9); if (a >= 0) f.kick += Math.exp(-a * 22); }
+        if ((frame + o.c.seed) % every === 0 || o.fresh || f.kick > 0.01 || f.aimK > 0.01) {
           CM.update(f, o.fresh ? 1 / 60 : Math.min(0.1, o.acc), t);
           o.acc = 0; o.fresh = false;
           gestures(o, p, seg, t);
@@ -1099,8 +1120,13 @@
         if (!jumped && !wrapped && p.fires.length && window.FIRE && window.FIRE.burst) {
           for (const fr of p.fires) {
             if (fr.t > lastT && fr.t <= t && f.F.grip && CM.muzzle(f, firePos, fireDir)) {
+              if (!canFire(seg)) { FSTAT.pose++; FSTAT.last = o.key + ' ' + seg.clip + ' ' + seg.k; continue; }
               fireTo.set(fr.to[0], fr.to[1], fr.to[2]);
-              window.FIRE.burst(firePos, fireDir, fr.n, { side: 'us', to: fireTo, rate: 9 });
+              // only a man whose rifle points at what he fires at (within 35 degrees)
+              if (fireDir.angleTo(fireTo.clone().sub(firePos)) > 0.61) { FSTAT.aim++; FSTAT.lastAim = o.key + ' ' + seg.clip + ' ' + Math.round(fireDir.angleTo(fireTo.clone().sub(firePos)) * 57.3); continue; }
+              FSTAT.fired++;
+              window.FIRE.burst(firePos, fireDir, fr.n, { side: 'us', to: fireTo, rate: 9, src: 'C:' + o.key });
+              o.kickT0 = t; o.kickN = fr.n;
             }
           }
         }

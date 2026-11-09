@@ -91,6 +91,7 @@
     }
   }
   // the spider holes nva.js lifts lids on (and fire.js fires from in chapter 11), by one rule shared by the three files
+  // (their 'lz' four get low grass round them from chapter 11, below, so the man who rises there and his flash show)
   WORKS.nvaHoles = (which) => {
     const d = (h, p) => Math.hypot(h.pos.x - p.x, h.pos.z - p.z);
     const crest = (p) => WORKS.spiderHoles.filter((h) => h.group === 'crest' && !WORKS.slits.some((s) => Math.hypot(s.pos.x - h.pos.x, s.pos.z - h.pos.z) < 5)).sort((a, b) => d(a, p) - d(b, p));
@@ -99,6 +100,7 @@
     if (which === 'lz') return h11;
     return [...crest(SITE.northEnd).slice(0, 2), ...crest(SITE.charliePause).slice(0, 2), ...h11];
   };
+  for (const h of WORKS.nvaHoles('lz')) WORKS.clearings.push({ x: h.pos.x, z: h.pos.z, r: 2.6, kind: 'slit', from: 11 });
   // 689: fighting holes on the perimeter line, five bunkers in the gaps
   const P = SITE.perimeter;
   const out = (b) => [Math.sin(b * DEG), -Math.cos(b * DEG)];

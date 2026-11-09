@@ -615,6 +615,19 @@
       return true;
     }
 
+    // grassH(x, z, ch): about how tall the stand is there in chapter ch (m; 0 where there is none, lowered on slit,
+    // LZ and perimeter clearings from their chapter). For fire.js's line-of-sight test and the tools.
+    window.LAND = window.LAND || {};
+    window.LAND.grassH = (x, z, ch) => {
+      const cov = coverAt(x, z);
+      if (inTile(x, z) && bk(BK.cls, x, z) < 0.38) return 2.5;   // forest: the understory and the trunks
+      if (cov < 0.18) return 0;
+      let h = 1.95 * bk(BK.tall, x, z);
+      const c = clearAt(x, z), kind = c % 4, from = (c - kind) / 4;
+      if (kind && from <= ch) h *= kind === 1 ? 0.2 : kind === 2 ? 0.38 : 0;
+      laneAt(x, z); if (LD < 0.6 && LC <= ch) h *= 0.4;   // a trampled lane
+      return h;
+    };
     // ======================= grass =======================
     const U = {
       uTime: { value: 0 }, uGust: { value: 0 }, uNight: { value: 0 }, uCam: { value: new THREE.Vector3() },

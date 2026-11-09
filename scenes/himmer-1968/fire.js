@@ -4,6 +4,12 @@
 // Tone: the flashes and tracers show roughly who is shooting where. No injury is shown. The NVA stay unseen: their
 // fire comes from positions (bunker slits, spider holes, snipers), never from rows of men.
 //
+// Every tracer and flash leaves a shooter the viewer can see (fix pass, "gun shots come from nowhere"): Marine fire is
+// fired by the marines files from each man's own muzzle, in a firing position with the rifle up on the target; enemy
+// fire comes from revealed slits (chapter 3 on), spider holes with a man risen in them (nva.js), or the man at a slit;
+// and a round is drawn only when its origin is on screen and not hidden by the ground, the grass or its own mound
+// (FIRE.visible, FIRE.gate). Measured by .scratch/gunfire/audit.mjs.
+//
 // Everything is a pure function of ctx.chapter.id and ctx.cycle.t. On entering a chapter the plug-in builds that
 // chapter's timeline once (seeded, so the same every time): every round, every burst, every smoke emitter, each with
 // its start time in the loop. Each frame it draws what is alive at cycle.t, including what started near the end of the
@@ -16,22 +22,21 @@
 //
 // Timing table (chapter, loop t in s, event), also in FIRE.timing:
 //   3   11-114  north-end bunker slits fire on A's positions (2-4 rounds/s per active slit, in windows)
-//   3   16-114  A's positions answer in bursts of 3-6
+//   3   16-114  A's men answer in bursts of 3-6 (marines-a-d.js, from their own rifles)
 //   3   38, 58, 81, 103  mortar bursts on A's positions
 //   5   60-80   15 rockets (120 mm) on the Hill 689 perimeter
-//   6   3-88    the horseshoe fires on Charlie's line; Charlie answers up the slope
+//   6   3-88    the horseshoe fires on Charlie's line; Charlie's men answer up the slope (marines-c.js)
 //   6   20-88   the second hidden position on Charlie's left opens on Charlie's left half
 //   6   18, 41, 66  mortar bursts on the slope
 //   6   50.0, 50.9, 52.3, 53.8  the artillery salvo within 50 m of Charlie, on the slope to its left; then nothing
-//   7   0-120   the whole ridge, lighter; A, C and D answer lightly
-//   7   3-118   sniper single shots at Delta's approach, one every 6-10 s
+//   7   0-120   the whole ridge (six slits the chapter camera sees), lighter; A, C and D answer from their men
+//   7   3-118   sniper single shots at Delta's approach, one every 6-10 s, from a slit in frame or a glint on the ridge
 //   7   9, 31, 55, 77, 99  mortar bursts on the slopes
 //   7   95-110  smoke grenades: yellow at Charlie's LZ, purple at A's LZ (gone by 119)
-//   8   0-90    sparse fire from two slits, a few Marine replies
+//   8   0-90    sparse fire from two slits (its camera frames none: not drawn)
 //   9   12, 35, 78  one bunker slit, short bursts toward the crater area
-//   9   14.5, 15.3, 38.0, 38.6, 80.5  Hunnicutt's single shots back
+//   9   14.5, 15.3, 36.6, 37.2, 80.5  Hunnicutt's single shots back (marines-c.js, from his rifle)
 //   9   42.0    Hunnicutt's grenade bursts (the throw leaves his hand at 40.8), dust, then quiet
-//   11  12.0, 14.0  two single flashes on the ridge, no tracer (the voice across the valley stops)
 //   11  92.8-98 spider holes round the battle-hill LZ fire up at the CH-46 (its hover window)
 //   1, 2, 4, 10  quiet
 (function () {
@@ -67,6 +72,7 @@
         minPx: 1.8,        // tracers and flashes never smaller than this many pixels
         pull: 1.6,         // flashes and tracers drawn this many metres toward the camera, so grass beside them doesn't swallow them
         nightLight: 1,     // strength of the muzzle-flash point lights at night
+        gate: true,        // draw a round only when its origin is in view (FIRE.visible); false shows every round
         // chapter 11: where the CH-46 is (loop time → {x,y,z}); medevac.js may replace this, then FIRE.rebuild()
         ch46At: null,
         timing: [],
@@ -87,10 +93,12 @@
           const u = flat(S.battleSummit, p);
           return { x: p.x, y: p.y, z: p.z, dir: { x: u.x, y: 0, z: u.z }, id: 'arc' + i };
         });
-        // the muzzle: just out of the slit, a little up
+        // the muzzle: just out of the slit mouth, at the log lintel's height (works.js: the lintel 0.58 m over the
+        // ground at the mound's face), so the flash sits in the dark slot under the log and clears the low grass in front
         for (const s of slits) {
-          const d = s.dir || { x: 0, z: 0 };
-          s.m = { x: s.x + (d.x || 0) * 0.4, y: s.y + 0.35, z: s.z + (d.z || 0) * 0.4 };
+          // (the walking surface, so a slit beside a crater rim does not fire from inside the rim)
+          const d = s.dir || { x: 0, z: 0 }, mx = s.x + (d.x || 0) * 0.45, mz = s.z + (d.z || 0) * 0.45;
+          s.m = { x: mx, y: Math.max(ctx.surfaceY(s.x, s.z) + 0.56, ctx.surfaceY(mx, mz) + 0.35), z: mz, fx: d.x || 0, fz: d.z || 0 };
         }
         const dist = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
         let second = slits.filter((s) => dist(s, S.secondPosition) < 14);
@@ -135,10 +143,14 @@
         const D = [];
         for (let i = 0; i < 5; i++) D.push(off(S.deltaStart, ax, 10 + i * 11, (i % 2 ? 5 : -5), 0.9));
         const snipers = [off(S.deltaStart, ax, S.deltaStop * 1.25, 12, 1.4), off(S.deltaStart, ax, S.deltaStop * 1.15, -14, 1.4)];
-        const nearC = horseshoe.slice().sort((a, b) => dist(a, S.charliePause) - dist(b, S.charliePause)).slice(0, 5);
+        // the horseshoe slits nearest Charlie that face his way (a slit facing off the other side of its mound cannot
+        // fire on him, and the camera on his line cannot see its flash)
+        const faceC = (s) => { const d = s.dir || { x: 0, z: 0 }, u = flat(s, S.charliePause); return d.x * u.x + d.z * u.z > 0.2; };
+        const nearC = horseshoe.filter(faceC).concat(horseshoe.filter((s) => !faceC(s))).sort((a, b) => (faceC(b) - faceC(a)) || (dist(a, S.charliePause) - dist(b, S.charliePause))).slice(0, 5);
         // chapter 9: the slit that fires on the crater area (15-60 m off), else the second position
         const cands = slits.filter((s) => dist(s, S.himmerFall) >= 15 && dist(s, S.himmerFall) <= 60).sort((a, b) => dist(a, S.himmerFall) - dist(b, S.himmerFall));
-        const s9 = cands[0] || second[0];
+        // the one the chapter camera frames at the times it fires (12, 35, 78), else the nearest (fix pass)
+        const s9 = cands.find((s) => [12, 35, 78].filter((t) => FIRE.seenAt(s.m, 9, t)).length >= 2) || cands[0] || second[0];
         const hun = pt(S.himmerFall.x - 1.0, S.himmerFall.z + 0.8, 0.45);
         // chapter 11
         const ridgeShot = off(S.gully, flat(S.gully, S.battleSummit), 10, 0, 1.0);
@@ -147,6 +159,51 @@
         const holes = wl.length === 4 ? wl.map((h) => pt(h.pos.x, h.pos.z, 0.3)) : [0, 1, 2, 3].map((i) => { const a = 0.6 + i * 1.7, r = 4 + (i % 2) * 4.5; return pt(lz.x + Math.cos(a) * r, lz.z + Math.sin(a) * r, 0.3); });
         P = { slits, fromWorks, horseshoe, north, second, nearC, A, C, Cleft, D, snipers, s9, hun, ridgeShot, lz, holes };
       }
+
+      // ---------- can the viewer see a point? (the fix pass on "gun shots come from nowhere") ----------
+      // On screen (inside 0.97 of the frame), not behind the ground, and not behind more than 1 m of standing grass or
+      // forest on the line to the camera (LAND.grassH). Every round is drawn only when its origin passes this from the
+      // camera that is drawing (FIRE.visible); the timeline uses the chapter's own camera (FIRE.seenAt) to choose
+      // which slit or hole a sniper shot comes from.
+      const vCam = new THREE.PerspectiveCamera(), vP = new THREE.Vector3(), vL = new THREE.Vector3(), vN = new THREE.Vector3();
+      function clearLine(p, c, ch) {
+        const gh = window.LAND && window.LAND.grassH;
+        const dx = c.x - p.x, dy = c.y - p.y, dz = c.z - p.z, L = Math.hypot(dx, dy, dz);
+        let grass = 0;
+        for (let s = 0.25; s < L; s += s < 30 ? 0.25 : 2) {
+          const k = s / L, x = p.x + dx * k, y = p.y + dy * k, z = p.z + dz * k, g = ctx.surfaceY(x, z);
+          if (y < g - 0.05) return false;
+          if (gh && s < 40 && y - g < gh(x, z, ch)) { grass += s < 30 ? 0.25 : 2; if (grass >= 1.0) return false; }
+        }
+        return true;
+      }
+      function onScreen(cam, p) { vN.set(p.x, p.y, p.z).project(cam); return vN.z < 1 && Math.abs(vN.x) < 0.97 && Math.abs(vN.y) < 0.97; }
+      // a slit's flash is behind its own mound when the camera is more than 100 degrees off the way the slit faces
+      const facing = (p, c) => p.fx === undefined || (p.fx * (c.x - p.x) + p.fz * (c.z - p.z)) / (Math.hypot(c.x - p.x, c.z - p.z) || 1) > -0.17;
+      FIRE.visible = (p, cam) => { cam = cam || ctx.camera; cam.updateMatrixWorld(); return onScreen(cam, p) && facing(p, cam.position) && clearLine(p, cam.position, ctx.chapter.id); };
+      FIRE.seenAt = (p, ch, t) => {
+        if (!ctx.chapterCam) return true;
+        ctx.chapterCam(ch, t, vP, vL);
+        vCam.fov = ctx.camera.fov; vCam.aspect = 16 / 9; vCam.near = ctx.camera.near; vCam.far = ctx.camera.far; vCam.updateProjectionMatrix();
+        vCam.position.copy(vP); vCam.lookAt(vL); vCam.updateMatrixWorld();
+        return onScreen(vCam, p) && facing(p, vP) && clearLine(p, vP, ch);
+      };
+      // the slits the chapter camera sees at most of these loop times (for chapters whose fire may come from any slit)
+      const seenSlits = (ch, ts) => (P.slits || []).filter((s) => ts.filter((t) => FIRE.seenAt(s.m, ch, t)).length >= ts.length * 0.6);
+      // a sniper's shot at `to` at loop time t in chapter ch: from a slit the chapter camera sees (the second position
+      // first, then the horseshoe, within 220 m); else a glint (flash, no tracer) at a crest spider hole or a point on
+      // the ridge it sees, so the cause is in frame before the man falls. { pos, glint, id }
+      FIRE.sniperFrom = (to, ch, t) => {
+        if (!P) places();
+        const d = (a) => Math.hypot(a.x - to.x, a.z - to.z);
+        const sl = P.second.concat(P.horseshoe.slice().sort((a, b) => d(a) - d(b))).filter((s) => d(s) < 220);
+        for (const s of sl) if (FIRE.seenAt(s.m, ch, t)) return { pos: s.m, glint: false, id: s.id };
+        const W = ctx.works || window.WORKS;
+        const crest = ((W && W.spiderHoles) || []).filter((h) => h.group === 'crest').map((h) => ({ x: h.pos.x, y: gy(h.pos.x, h.pos.z) + 0.45, z: h.pos.z, id: h.id })).sort((a, b) => d(a) - d(b));
+        for (const h of crest) if (d(h) < 220 && FIRE.seenAt(h, ch, t)) return { pos: h, glint: true, id: h.id };
+        for (const p of S.bunkerArc) { const q = { x: p.x, y: gy(p.x, p.z) + 1.9, z: p.z }; if (FIRE.seenAt(q, ch, t)) return { pos: q, glint: true, id: 'ridge' }; }
+        return null;
+      };
 
       // ---------- the timeline ----------
       // round: { t, ax..bz, dur, side (0 us, 1 nva), tracer, fs (flash size) }
@@ -173,7 +230,7 @@
           bx += u.x * over; bz += u.z * over;
           const by = o.by !== undefined ? o.by + (rng() - 0.5) * 1.2 : gy(bx, bz) + 0.4 + rng() * 1.6;
           const d = Math.hypot(bx - a.x, by - a.y, bz - a.z);
-          rounds.push({ t, ax: a.x, ay: a.y, az: a.z, bx, by, bz, d, dur: d / FIRE.speed, side, tracer: o.tracer !== false, fs: o.fs || (side ? 0.8 : 0.55), fl: o.fl });
+          rounds.push({ t, ax: a.x, ay: a.y, az: a.z, bx, by, bz, d, dur: d / FIRE.speed, side, tracer: o.tracer !== false, fs: o.fs || (side ? 1.15 : 0.55), fl: o.fl, src: o.src || '?', hole: o.hole, fx: a.fx, fz: a.fz });
         }
         function gunPuff(t, a, sz, life) {
           emitters.push({ t0: t, t1: t, x: a.x, y: a.y, z: a.z, every: 1, life: life || 7, size: sz || 0.45, rise: 1.2, col: gunCol, seed: eid++, drift: 0.8 });
@@ -221,11 +278,11 @@
 
         if (id === 3) {
           const act = (t) => smooth((t - 11) / 5) * (1 - 0.4 * smooth((t - 80) / 15) - 0.6 * smooth((t - 100) / 14));
-          P.north.forEach((s, i) => stream(s, P.A, 11 + i * 1.5, 114, { act }));
-          P.A.forEach((a, i) => { if (i % 3 !== 2) bursts(a, P.north.map((s) => s.m), 16 + i, 114, { act }); });
+          P.north.forEach((s, i) => stream(s, P.A, 11 + i * 1.5, 114, { act, src: 'slit:' + s.id }));
+          // A's answer is fired by A's men themselves (marines-a-d.js, FIRE.burst from each man's muzzle)
           for (const t of [38, 58, 81, 103]) if (rng() < R.mortar + 0.001) blast(t, near(pick(P.A), 5), 'mortar');
           ridgeSmoke(P.north[0], 14, 108);
-          timing.push([3, '11-114', 'north-end slits fire on A'], [3, '16-114', 'A answers in bursts'], [3, '38, 58, 81, 103', 'mortars on A']);
+          timing.push([3, '11-114', 'north-end slits fire on A'], [3, '16-114', 'A answers in bursts (marines-a-d.js)'], [3, '38, 58, 81, 103', 'mortars on A']);
         } else if (id === 5) {
           for (let k = 0; k < 15; k++) {
             const t = 60 + k * (20 / 15) + rng() * 0.6, b = rng() * 360, p = S.perimeter.at(b);
@@ -234,12 +291,9 @@
           timing.push([5, '60-80', '15 rockets on the 689 perimeter']);
         } else if (id === 6) {
           const act = (t) => 0.35 + 0.65 * smooth((t - 4) / 6) * (1 - 0.65 * smooth((t - 74) / 14));
-          P.nearC.forEach((s, i) => stream(s, P.C, 3 + i, 88, { act }));
-          P.second.forEach((s, i) => stream(s, P.Cleft, 20 + i * 0.7, 88, { act: () => 1.3 }));
-          P.C.forEach((c, i) => {
-            bursts(c, P.nearC.map((s) => s.m), 3 + i * 0.5, 88, { act: (t) => act(t) * 0.8 });
-            if (c.side < 0) bursts(c, P.second.map((s) => s.m), 24 + i, 88, { act: () => 0.6 });
-          });
+          P.nearC.forEach((s, i) => stream(s, P.C, 3 + i, 88, { act, src: 'slit:' + s.id }));
+          P.second.forEach((s, i) => stream(s, P.Cleft, 20 + i * 0.7, 88, { act: () => 1.3, src: 'slit:' + s.id }));
+          // Charlie's answer is fired by Charlie's men (marines-c.js, live from each man's muzzle)
           for (const t of [18, 41, 66]) blast(t, near(pick(P.C), 12), 'mortar');
           const Cl = P.Cleft[0];
           [50.0, 50.9, 52.3, 53.8].forEach((t, i) => {
@@ -250,38 +304,48 @@
           timing.push([6, '3-88', 'horseshoe on C; C answers'], [6, '20-88', 'second position on C\'s left'], [6, '18, 41, 66', 'mortars'], [6, '50.0-53.8', 'artillery salvo, 4 bursts, then nothing']);
         } else if (id === 7) {
           const tg = P.A.concat(P.C, P.D);
-          for (let i = 0; i < 6; i++) stream(P.slits[(i * 5 + 1) % P.slits.length], tg, i * 2, 118, { act: () => 0.45 });
-          P.A.concat(P.C).forEach((a, i) => { if (i % 2 === 0) bursts(a, P.slits.map((s) => s.m), i, 118, { act: () => 0.4 }); });
-          P.D.forEach((d) => bursts(d, P.snipers, 5, 118, { act: () => 0.3 }));
-          P.snipers.forEach((s, i) => singles(s, P.D, 3 + i * 4, 118, 12, 20, { fs: 0.6 }));   // two snipers: together one shot every 6-10 s
+          // six slits along the ridge that the chapter camera sees (fix pass; was every fifth slit, three of them twice)
+          const sv = seenSlits(7, [10, 40, 70, 100]), s7 = (sv.length ? sv : P.slits);
+          for (let i = 0; i < 6; i++) { const s = s7[Math.floor(i * s7.length / 6) % s7.length]; stream(s, tg, i * 2, 118, { act: () => 0.45, src: 'slit:' + s.id }); }
+          // A, C and D answer from their own men (marines-a-d.js, marines-c.js). The snipers' singles at Delta, one
+          // every 6-10 s: each from a slit the chapter camera sees at that moment, else a glint on the ridge in frame
+          for (let t = 3 + rng() * 6; t < 118; t += 6 + rng() * 4) {
+            const tg = pick(P.D), src = FIRE.sniperFrom(tg, 7, t);
+            if (!src) continue;
+            round(t, src.pos, tg, 2, 1, { fs: 0.9, src: (src.glint ? 'glint:' : 'slit:') + src.id, tracer: !src.glint });
+            if (!src.glint) gunPuff(t, src.pos);
+          }
           for (const t of [9, 31, 55, 77, 99]) blast(t, near(pick(tg), 8), 'mortar');
           emitters.push({ t0: 103, t1: 119, x: S.czlz.x, y: S.czlz.y + 0.2, z: S.czlz.z, every: 0.45, life: 9, size: 1.0, rise: 5, col: ctx.lin(0xe6c43c), seed: eid++, drift: 1.6, colored: true });
           emitters.push({ t0: 103.5, t1: 119, x: S.alz.x, y: S.alz.y + 0.2, z: S.alz.z, every: 0.45, life: 9, size: 1.0, rise: 5, col: ctx.lin(0x8a5aa8), seed: eid++, drift: 1.6, colored: true });
           ridgeSmoke(S.battleSummit, 0, 110);
           timing.push([7, '0-120', 'whole ridge, lighter'], [7, '3-118', 'sniper singles at Delta, every 6-10 s'], [7, '9, 31, 55, 77, 99', 'mortars'], [7, '103-119', 'yellow smoke at C\'s LZ, purple at A\'s LZ (the medevacs land 116.5, 118)']);
         } else if (id === 8) {
-          [P.nearC[0], P.second[0]].forEach((s, i) => stream(s, P.C, 4 + i * 9, 86, { act: () => 0.18, w: 1.4 }));
-          P.C.forEach((c, i) => { if (i % 4 === 1) bursts(c, P.nearC.map((s) => s.m), 8 + i, 86, { act: () => 0.15 }); });
+          // the two slits nearest Charlie's line that the chapter camera sees (fix pass; were off the top of its frame)
+          const sv = seenSlits(8, [10, 30, 50, 70]).sort((a, b) => Math.hypot(a.x - S.charliePause.x, a.z - S.charliePause.z) - Math.hypot(b.x - S.charliePause.x, b.z - S.charliePause.z));
+          const s8 = sv.length >= 2 ? sv.slice(0, 2) : [P.nearC[0], P.second[0]];
+          s8.forEach((s, i) => stream(s, P.C, 4 + i * 9, 86, { act: () => 0.18, w: 1.4, src: 'slit:' + s.id }));
           timing.push([8, '0-90', 'sparse fire']);
         } else if (id === 9) {
           const s = P.s9, a = s.m || s, tg = [{ x: S.himmerFall.x, z: S.himmerFall.z }];
           const by = S.himmerFall.y + 1.1;
-          for (const t0 of [12, 35, 78]) { const n = 3 + Math.floor(rng() * 3); gunPuff(t0, a); for (let i = 0; i < n; i++) round(t0 + i * 0.32, a, tg[0], 3, 1, { by }); }
-          for (const t of [14.5, 15.3, 38.0, 38.6, 80.5]) { round(t, P.hun, a, 1.2, 0, { by: a.y + 0.3 }); gunPuff(t, P.hun, 0.09, 3); }   // a wisp about 0.4 m across: it must not hide the throw at 40.8 (integration)
+          for (const t0 of [12, 35, 78]) { const n = 3 + Math.floor(rng() * 3); gunPuff(t0, a); for (let i = 0; i < n; i++) round(t0 + i * 0.32, a, tg[0], 3, 1, { by, src: 'slit:' + s.id }); }
+          // Hunnicutt's single shots back (14.5, 15.3, 36.6, 37.2, 80.5) leave his own rifle (marines-c.js)
           const u = flat(P.hun, a), d = Math.min(u.l - 3, 10);   // 10 m toward the slit, in the chapter camera's frame (fix pass; was up to 26)
           blast(42.0, { x: P.hun.x + u.x * d, z: P.hun.z + u.z * d }, 'grenade');
-          timing.push([9, '12, 35, 78', 'slit bursts at the crater area'], [9, '14.5, 15.3, 38.0, 38.6, 80.5', 'Hunnicutt fires back'], [9, '42.0', 'grenade bursts (throw at 40.8), then quiet']);
+          timing.push([9, '12, 35, 78', 'slit bursts at the crater area'], [9, '14.5, 15.3, 36.6, 37.2, 80.5', 'Hunnicutt fires back from his rifle (marines-c.js)'], [9, '42.0', 'grenade bursts (throw at 40.8), then quiet']);
         } else if (id === 11) {
-          for (const t of [12.0, 14.0]) { round(t, P.ridgeShot, { x: P.ridgeShot.x + 6, z: P.ridgeShot.z - 4 }, 0.5, 1, { tracer: false, fs: 2.2, fl: 0.13 }); gunPuff(t, P.ridgeShot); }
+          // (the two single flashes on the far ridge at 12.0 and 14.0 are gone, fix pass: no one was there to fire them)
           const heli = FIRE.ch46At || ((t) => ({ x: P.lz.x, y: P.lz.y + 2.5 + 12 * smooth((t - 96) / 4), z: P.lz.z }));
           P.holes.forEach((h, i) => {
-            for (let t = 92.8 + i * 0.4 + rng() * 0.3; t < 98; t += (1 / 3) * (0.75 + 0.5 * rng())) { const q = heli(t); round(t, h, q, 1.5, 1, { by: q.y }); }
+            for (let t = 92.8 + i * 0.4 + rng() * 0.3; t < 98; t += (1 / 3) * (0.75 + 0.5 * rng())) { const q = heli(t); round(t, h, q, 1.5, 1, { by: q.y, src: 'hole:' + i, hole: i }); }
             gunPuff(92.8 + i * 0.4, h);
           });
-          timing.push([11, '12.0, 14.0', 'two single flashes on the ridge, no tracer'], [11, '92.8-98', 'spider holes fire at the CH-46 while its ramp is down']);
+          timing.push([11, '92.8-98', 'spider holes fire at the CH-46 while its ramp is down']);
         }
         // permanent additions from the API
         for (const x of extras[id] || []) x(round, blast, emitters, gunPuff);
+        if (id <= 2) for (let i = rounds.length - 1; i >= 0; i--) if (rounds[i].side) rounds.splice(i, 1);   // the ridge is hidden: no enemy fire
         rounds.sort((a, b) => a.t - b.t);
         blasts.sort((a, b) => a.t - b.t);
         FIRE.timing = timing;
@@ -308,11 +372,11 @@
       }
       const U = { uPxK: { value: 1000 }, uMinPx: { value: FIRE.minPx }, uPull: { value: FIRE.pull } };
       // tracers: camera-facing ribbons from tail (iA) to head (iB)
-      const T = quadGeo([0, -1, 1, -1, 1, 1, 0, 1], MAX_T, [['iA', 3], ['iB', 3], ['iC', 4]]);
+      const T = quadGeo([0, -1, 1, -1, 1, 1, 0, 1], MAX_T, [['iA', 3], ['iB', 3], ['iC', 4], ['iT', 1]]);
       const tracerMat = new THREE.ShaderMaterial({
         uniforms: U, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
-        vertexShader: `attribute vec2 corner; attribute vec3 iA; attribute vec3 iB; attribute vec4 iC;
-          uniform float uPxK, uMinPx, uPull; varying vec3 vCol; varying vec2 vUv;
+        vertexShader: `attribute vec2 corner; attribute vec3 iA; attribute vec3 iB; attribute vec4 iC; attribute float iT;
+          uniform float uPxK, uMinPx, uPull; varying vec3 vCol; varying vec2 vUv; varying float vT;
           void main() {
             vec3 a = (modelViewMatrix * vec4(iA, 1.0)).xyz, b = (modelViewMatrix * vec4(iB, 1.0)).xyz;
             vec3 p = mix(a, b, corner.x), d = b - a; float dl = length(d); d = dl > 1e-4 ? d / dl : vec3(1.0, 0.0, 0.0);
@@ -320,11 +384,11 @@
             float w = max(iC.w, uMinPx * max(-p.z, 0.1) / uPxK);
             p += s * corner.y * w * 0.5;
             float L = length(p); p *= max(0.3, (L - min(uPull, L * 0.3)) / L);
-            vCol = iC.rgb * mix(1.0, iC.w / w, 0.45); vUv = corner;
+            vCol = iC.rgb * mix(1.0, iC.w / w, 0.45); vUv = corner; vT = iT;
             gl_Position = projectionMatrix * vec4(p, 1.0);
           }`,
-        fragmentShader: `varying vec3 vCol; varying vec2 vUv;
-          void main() { float al = vUv.x * vUv.x * (3.0 - 2.0 * vUv.x); float ac = 1.0 - vUv.y * vUv.y;
+        fragmentShader: `varying vec3 vCol; varying vec2 vUv; varying float vT;
+          void main() { float al = mix(vT, 1.0, vUv.x * vUv.x * (3.0 - 2.0 * vUv.x)); float ac = 1.0 - vUv.y * vUv.y;
             vec3 c = mix(vCol, vec3(1.0), 0.35 * al * ac) * al * ac; gl_FragColor = vec4(c, 1.0); }`,
       });
       const tracerMesh = new THREE.Mesh(T.g, tracerMat);
@@ -396,6 +460,7 @@
       const dbs = new THREE.Vector2();
       const cand = [0, 0, 0, 0].map(() => ({ s: 0, x: 0, y: 0, z: 0 }));
       let nT = 0, nG = 0, nP = 0, night = 0;
+      const V0 = new THREE.Vector3();
       const H = (a, b) => { const h = Math.sin(a * 127.1 + b * 311.7) * 43758.5453; return h - Math.floor(h); };
       // the wind smoke follows: the land's shared vector if it exposes one, else the base's ctx.wind.dir (east, a
       // little south), with a slow wander that repeats with the loop
@@ -426,20 +491,33 @@
       }
       function sideCol(side) { return FIRE.tracerConvention ? (side ? cNva : cUs) : cTr; }
 
+      // a round is drawn only if the viewer sees where it leaves from (decided once per round per loop, on its first
+      // frame): no tracer comes out of the grass, the ground or the edge of the frame without its shooter in view
+      let okKey = 0;
       function drawRound(r, tau) {
-        const fl = r.fl || 0.075;
+        if (r.hole !== undefined && tau < 0.05) {   // ch 11: from the rifle of the man risen in that hole (nva.js)
+          const m = window.NVA && window.NVA.muzzle11 && window.NVA.muzzle11(r.hole);
+          if (m) { r.ax = m.x; r.ay = m.y; r.az = m.z; r.d = Math.hypot(r.bx - r.ax, r.by - r.ay, r.bz - r.az); }
+          else if (window.NVA && window.NVA.muzzle11) { r.okK = okKey; r.ok = false; }
+        }
+        if (r.okK !== okKey) { r.okK = okKey; V0.set(r.ax, r.ay, r.az); V0.fx = r.fx; V0.fz = r.fz; r.ok = !FIRE.gate || FIRE.visible(V0); }
+        if (!r.ok) return;
+        const fl = r.fl || 0.09;
         if (tau < fl) {
           const k = 1 - tau / fl, sz = r.fs * (0.6 + 0.4 * k) * (1 + 0.7 * night);
-          glow(r.ax, r.ay, r.az, cFl, 1.6 * Math.sqrt(k), sz);
+          glow(r.ax, r.ay, r.az, cFl, (r.side ? 2.4 : 1.6) * Math.sqrt(k), sz);
           light(r.fs * k, r.ax, r.ay + 0.3, r.az);
         }
         if (r.tracer && nT < MAX_T) {
-          const v = FIRE.speed, head = Math.min(1, (tau * v) / r.d), tail = Math.max(0, Math.min(1, (tau * v - FIRE.streak) / r.d));
+          // for its first 0.1 s the streak stays joined to the muzzle (its tail on the flash), then runs free
+          const v = FIRE.speed, head = Math.min(1, (tau * v) / r.d);
+          const tail = Math.max(0, Math.min(1, (tau * v - FIRE.streak - v * Math.max(0, 0.1 - tau)) / r.d));
           if (head > tail) {
             const c = sideCol(r.side), k = 1.5;
             T.bufs.iA.setXYZ(nT, r.ax + (r.bx - r.ax) * tail, r.ay + (r.by - r.ay) * tail, r.az + (r.bz - r.az) * tail);
             T.bufs.iB.setXYZ(nT, r.ax + (r.bx - r.ax) * head, r.ay + (r.by - r.ay) * head, r.az + (r.bz - r.az) * head);
             T.bufs.iC.setXYZW(nT, c.r * k, c.g * k, c.b * k, FIRE.width);
+            T.bufs.iT.setX(nT, tail <= 0 ? 1 - smooth(tau / 0.1) : 0);
             nT++;
           }
           const ti = tau - r.dur;
@@ -508,6 +586,7 @@
       this._frame = function () {
         ensure();
         const t = ctx.cycle.t, L = TL.L;
+        okKey = (ctx.cycle.n || 0) * 64 + builtN + 1;
         night = clamp01((0.65 - ctx.light.day) / 0.5);
         // smoke lets light through: lift its shaded faces a little by day, so a puff never reads as a rock
         {
@@ -555,7 +634,7 @@
         }
         T.g.instanceCount = nT; G.g.instanceCount = nG; PS.g.instanceCount = nP; puffs.visible = nP > 0;
         FIRE.stats = { tracers: nT, glows: nG, puffs: nP };
-        if (nT) { T.bufs.iA.needsUpdate = T.bufs.iB.needsUpdate = T.bufs.iC.needsUpdate = true; }
+        if (nT) { T.bufs.iA.needsUpdate = T.bufs.iB.needsUpdate = T.bufs.iC.needsUpdate = T.bufs.iT.needsUpdate = true; }
         if (nG) { G.bufs.iP.needsUpdate = G.bufs.iC.needsUpdate = true; }
         if (nP) { PS.bufs.iP.needsUpdate = PS.bufs.iC.needsUpdate = PS.bufs.iS.needsUpdate = true; }
         for (let i = 0; i < 4; i++) {
@@ -578,7 +657,7 @@
       FIRE.burst = (pos, dir, n, o) => {
         o = o || {}; n = n || 4;
         const a = V(pos), tg = target(pos, dir, o), side = o.side === 'nva' ? 1 : 0, rate = o.rate || 9;
-        const mk = (t0) => { const out = []; for (let i = 0; i < n; i++) { const t = t0 + i / rate, bx = tg.x + (H(t0, i) - 0.5) * (o.sc || 2), bz = tg.z + (H(t0 + 1, i) - 0.5) * (o.sc || 2), by = tg.y + (H(t0 + 2, i) - 0.3) * 1.2, d = Math.hypot(bx - a.x, by - a.y, bz - a.z); out.push({ t, ax: a.x, ay: a.y, az: a.z, bx, by, bz, d, dur: d / FIRE.speed, side, tracer: o.tracer !== false, fs: o.fs || (side ? 0.8 : 0.55) }); } return out; };
+        const mk = (t0) => { const out = []; for (let i = 0; i < n; i++) { const t = t0 + i / rate, bx = tg.x + (H(t0, i) - 0.5) * (o.sc || 2), bz = tg.z + (H(t0 + 1, i) - 0.5) * (o.sc || 2), by = tg.y + (H(t0 + 2, i) - 0.3) * 1.2, d = Math.hypot(bx - a.x, by - a.y, bz - a.z); out.push({ t, ax: a.x, ay: a.y, az: a.z, bx, by, bz, d, dur: d / FIRE.speed, side, tracer: o.tracer !== false, fs: o.fs || (side ? 1.15 : 0.55), src: 'api:' + (o.src || '?') }); } return out; };
         if (o.at !== undefined) {
           const ch = o.ch || ctx.chapter.id;
           (extras[ch] = extras[ch] || []).push((round, blast, emitters, gunPuff) => { for (const r of mk(o.at)) TLpush(r); gunPuff(o.at, a); });
@@ -592,7 +671,7 @@
       function TLpush(r) { pendingRounds.push(r); }
       // wrap build so API rounds land in the sorted list
       const build0 = build;
-      build = function (id, L) { pendingRounds = []; const tl = build0(id, L); if (pendingRounds.length) { tl.rounds.push(...pendingRounds); tl.rounds.sort((a, b) => a.t - b.t); } return tl; };
+      build = function (id, L) { pendingRounds = []; const tl = build0(id, L); if (id <= 2) pendingRounds = pendingRounds.filter((r) => !r.side); if (pendingRounds.length) { tl.rounds.push(...pendingRounds); tl.rounds.sort((a, b) => a.t - b.t); } return tl; };
       // blast(pos, kind 'mortar'|'rocket'|'arty'|'grenade', { at, ch })
       FIRE.blast = (pos, kind, o) => {
         o = o || {}; kind = kind || 'mortar';
@@ -610,6 +689,9 @@
       };
       // flash(pos, size, { at, ch }): a single muzzle flash, no tracer
       FIRE.flash = (pos, size, o) => FIRE.burst(pos, null, 1, Object.assign({ tracer: false, fs: size || 0.8, to: pos }, o || {}));
+      FIRE.rounds = () => { ensure(); return TL.rounds; };
+      // chapter 9's slit (for marines-c.js, whose Hunnicutt faces and fires at it, and nva.js, whose man rises in it)
+      FIRE.s9 = () => { if (!P) places(); return P.s9; };
       FIRE.schedule = () => { ensure(); return { rounds: TL.rounds.length, blasts: TL.blasts.map((b) => [b.kind, +b.t.toFixed(1)]), emitters: TL.emitters.length, positions: P && { fromWorks: P.fromWorks, slits: P.slits.length, north: P.north.map((s) => s.id), second: P.second.map((s) => s.id), s9: P.s9.id } }; };
     },
     update() { if (this._frame) this._frame(); },

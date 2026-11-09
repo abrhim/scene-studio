@@ -1061,6 +1061,8 @@
     // the land: scale constants and conversions, the land class (1 grass, 0 forest), the DEM's real height
     land: { LAND, yOf, realOf, realH, cls: landCls, tpi: tpiAt, toCol, toRow, pxX, pxZ, tile },
     CHAPTERS,
+    // chapterCam(id, t, outPos, outLook): where the chapter's own camera is at loop time t (no user orbit, no ease)
+    chapterCam: (id, t, outPos, outLook) => { const c = CHAPTERS.find((q) => q.id === id) || CHAPTERS[chap.i]; viewAt(c.view, t, c.loop, outPos, outLook); return outPos; },
     goChapter: (id, t0) => goChapter(id, t0),
     nextChapter: () => goChapter(CHAPTERS[Math.min(CHAPTERS.length - 1, chap.i + 1)].id),
     prevChapter: () => goChapter(CHAPTERS[Math.max(0, chap.i - 1)].id),

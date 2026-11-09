@@ -221,7 +221,7 @@
           placeSlitMan(f, s, 0, 1); pose(f, 'Rifle Idle', 1.0); for (let k = 0; k < 4; k++) step(f, 1 / 30, k / 30);
           CM.muzzle(f, mz, md);
           const to = { x: s.pos.x + s.dir.x * 16 + ((i * 7) % 5 - 2), y: G(s.pos.x + s.dir.x * 16, s.pos.z + s.dir.z * 16) + 0.9, z: s.pos.z + s.dir.z * 16 + ((i * 3) % 5 - 2) };
-          if (fireOn) FIRE.burst({ x: mz.x, y: mz.y, z: mz.z }, null, n, { at: ev.fire, ch, side: 'nva', to, rate: RATE, sc: 3 });
+          if (fireOn) FIRE.burst({ x: mz.x, y: mz.y, z: mz.z }, null, n, { at: ev.fire, ch, side: 'nva', to, rate: RATE, sc: 3, src: 'nvaslit:' + id });
         });
         // up to three men at once: give each event a man not busy then
         me.slitEv.sort((a, b) => a.ch - b.ch || a.t0 - b.t0);
@@ -231,6 +231,13 @@
         }
         me.peekEv = PEEK_EV.map(([ch, spot, k, t0, len]) => ({ ch, h: PL.near[spot][k], t0, len, spot })).filter((e) => e.h);
         me.s9 = PL.s9;
+        me.h11 = PL.h11; me.up11 = [0, 0, 0, 0]; me.mz11 = [0, 1, 2, 3].map(() => new THREE.Vector3());
+        // fire.js asks where man i's muzzle is in chapter 11 (null while he is not up in his hole with the lid open)
+        window.NVA.muzzle11 = (i) => {
+          const f = POOL.hole[i];
+          if (ctx.chapter.id !== 11 || !f || !f.F.root.visible || !(me.up11[i] > 0.6)) return null;
+          return CM.muzzle(f, me.mz11[i]);
+        };
         f.F.root.visible = false;
       };
 
@@ -243,7 +250,9 @@
       // at a slit: his head just behind the slit mouth, under the lintel; drop lowers him out of sight
       function placeSlitMan(f, s, drop, k) {
         f.x = s.pos.x - s.dir.x * 0.3; f.z = s.pos.z - s.dir.z * 0.3; f.yaw = Math.atan2(s.dir.x, s.dir.z) - (me.rifleYaw || 0);
-        f.nva.head.set(s.pos.x - s.dir.x * 0.3, s.pos.y + 0.22 - drop, s.pos.z - s.dir.z * 0.3);
+        // on the walking surface where a crater rim stands higher than the slit (as fire.js's muzzle; fix pass)
+        const sy = Math.max(s.pos.y, G(s.pos.x + s.dir.x * 0.45, s.pos.z + s.dir.z * 0.45) + 0.2);
+        f.nva.head.set(s.pos.x - s.dir.x * 0.3, sy + 0.22 - drop, s.pos.z - s.dir.z * 0.3);
         f.nva.aim.set(s.dir.x, -0.06, s.dir.z).normalize(); f.nva.aimK = k; f.nva.useHead = true; f.nva.pitch = 0;
       }
       function after(f) {
@@ -320,11 +329,13 @@
         want.add(f);
       }
       // ch 11: four men in holes round the LZ fire up at the CH-46
+      if (me.up11) me.up11.fill(0);
       if (id === 11 && T > me.H11.lidOpen - 0.8 && T < me.H11.lidShut + 1.2) {
         const lz = ctx.SITE.routes.ch46[1];
         const heli = (window.FIRE && FIRE.ch46At) ? FIRE.ch46At(T) : { x: lz.x, y: lz.y + 3, z: lz.z };
         [0, 1, 2, 3].forEach((i) => {
-          const a = 0.6 + i * 1.7, r = 4 + (i % 2) * 4.5, x = lz.x + Math.cos(a) * r, z = lz.z + Math.sin(a) * r;
+          // the same four holes fire.js fires from (works.js's nvaHoles('lz')), so the flash is at this man's rifle
+          const x = me.h11[i].x, z = me.h11[i].z;
           const f = POOL.hole[i], d0 = i * 0.4;
           const open = sm((T - me.H11.lidOpen - d0 * 0.5) / 0.45) * (1 - sm((T - me.H11.lidShut - d0 * 0.3) / 0.5));
           const up = sm((T - me.H11.rise - d0) / 0.5) * (1 - sm((T - me.H11.duck - d0 * 0.25) / 0.45));
@@ -338,6 +349,7 @@
           want.add(f);
           setLid(nl++, x, z, hx, hz, open);
           me.holes.setMatrixAt(nh++, me.m4.makeTranslation(x, G(x, z) + 0.035, z));
+          me.up11[i] = up;
         });
       }
       // ch 5: Rider's file running low up the far slope, out of the grass and back into it
