@@ -134,6 +134,10 @@
     // the drag (fix pass, carries): the crouched walk with the rifle slung, both hands on the wounded man's harness
     const DRAGC = 'C:Drag Crouch'; CM.slung('Rifle Crouch Walk', DRAGC); CLIPS.push(DRAGC);
     V0[DRAGC] = V0['Rifle Crouch Walk']; VDEF[DRAGC] = VDEF['Rifle Crouch Walk'];
+    // (crawl-fix pass) a man who falls and then lies breathing rolls onto his back where he fell: the falls end face down,
+    // head ahead, and the plain crossfade into Laying Breathless (face up, head behind) stood him up mid-blend
+    const LBR = 'Laying Breathless (rolled)';
+    { const F = V3.make(1, 'rifleman', 0, mat), pf = CM.figure(F, { seed: 1, vary: false, ground: () => 0 }); (CM.turned && CM.turned(pf, 'Laying Breathless', LBR, 'Dying (1)', CM.clips['Dying (1)'].duration, { noShift: true })) || (CM.clips[LBR] = CM.clips['Laying Breathless']); F.mesh.geometry.dispose(); CLIPS.push(LBR); }
     const CL = CM.clips;
     const DUR = {}; for (const n of CLIPS) DUR[n] = CL[n].duration;
     // a second copy of each clip, so one figure can blend two times of the same clip (a seam, a crossfade)
@@ -728,9 +732,9 @@
             P.hold(mortarHit[i], 'Laying Breathless', { fade: 1.2, freeze: !!mortarKIA[i], ct0: 0.3, dead: !!mortarKIA[i] });
           } else {
             P.hold(11.4 + r() * 1.4, 'Prone Idle', { fade: 0.55 });
-            // after 60 the fringe crawls back a few metres
+            // after 60 the fringe crawls back a few metres (crawl-fix pass: head first, facing the way he crawls; was feet first)
             const p = P.at(62), back = [p.x - uA.x * 5.5, p.z - uA.z * 5.5];
-            P.walk(62 + r() * 12, 'Low Crawl', [back], { rev: true, v: 0.25, stop: 'Prone Idle' });
+            P.walk(62 + r() * 12, 'Low Crawl', [back], { turn: 3.5, v: 0.25, stop: 'Prone Idle' });
             for (const t of [24, 47, 70, 96]) if (r() < 0.35) P.fire(t + r() * 6, 3 + Math.floor(r() * 3), bunkTarget(i));
           }
         } else if ((i >= 15 && i <= 23) || i === 4) {
@@ -754,7 +758,7 @@
             dragged[D0.w].path = path; dragged[D0.w].t2 = tArr;
           } else {
             for (let t = 16 + r() * 8; t < 112; t += 15 + r() * 18) P.fire(t, 3 + Math.floor(r() * 4), bunkTarget(i));
-            if (mortarHit[i]) P.once(mortarHit[i], 'Dying (2)', { then: 'Laying Breathless', thenAfter: DUR['Dying (2)'] - 0.8 });
+            if (mortarHit[i]) P.once(mortarHit[i], 'Dying (2)', { then: LBR, thenAfter: DUR['Dying (2)'] - 0.8 });
           }
         } else if (i >= 24) {
           // Hayden's platoon: in reserve behind the base line, then the assault in short rushes (30-50)
@@ -776,14 +780,14 @@
             // killed (DY p. 313): a gentle fall, then still (Abram's ruling, 2026-11-09: the record's dead lie still)
             P.cut(deadAt[i]).die(deadAt[i], i === 24 ? 'Dying' : 'Dying (1)');
           } else if (woundAt[i]) {
-            P.cut(woundAt[i]).once(woundAt[i], 'Dying (1)', { then: 'Laying Breathless', thenAfter: 3.9 });
+            P.cut(woundAt[i]).once(woundAt[i], 'Dying (1)', { then: LBR, thenAfter: 3.9 });
           } else {
             P.hold(tHalt, i % 3 === 0 ? 'Idle Crouching' : 'Prone Idle', { fade: 0.6 });
             if (mortarHit[i]) P.hold(mortarHit[i], 'Laying Breathless', { fade: 1.2, freeze: !!mortarKIA[i], ct0: 0.3, dead: !!mortarKIA[i] });
             else {
               const p = P.at(64), back = [p.x - uA.x * 5, p.z - uA.z * 5];
               if (i % 3 === 0) P.hold(63 + r() * 4, 'Prone Idle', { fade: 0.7 });
-              P.walk(66 + r() * 14, 'Low Crawl', [back], { rev: true, v: 0.24, stop: 'Prone Idle' });
+              P.walk(66 + r() * 14, 'Low Crawl', [back], { turn: 3.5, v: 0.24, stop: 'Prone Idle' });
               for (const t2 of [72, 99]) if (r() < 0.3) P.fire(t2 + r() * 8, 3, bunkTarget(i));
             }
           }
@@ -1007,7 +1011,7 @@
           const P = Plan(Ac, 11, L, p0[0], p0[1], yawV, 'Rifle Kneel Idle');
           P.walk(1 + rank * 0.4 + r() * 0.5, 'Walk With Rifle', [p1], { stop: rank === 0 ? 'Pointing' : 'Looking Around', stopYaw: yawV, v: 0.95 });
           P.hold(12.25 + r() * 0.9, 'Prone Idle', { fade: 0.5, yaw: yawV });
-          P.walk(40 + r() * 8, 'Low Crawl', [[p1[0] - dirV.x * 6, p1[1] - dirV.z * 6]], { rev: true, v: 0.26, stop: 'Prone Idle' });
+          P.walk(40 + r() * 8, 'Low Crawl', [[p1[0] - dirV.x * 6, p1[1] - dirV.z * 6]], { turn: 3.5, v: 0.26, stop: 'Prone Idle' });
           P.hold(70 + r() * 6, 'Rifle Kneel Idle', { fade: 1.0, yaw: yawV });
           P.walk(74 + r() * 6, 'Walk With Rifle', [p0], { stop: 'Rifle Kneel Idle', stopYaw: yawV, v: 0.8 });
           if (rank === 0) P.gesture(9.8, 2.6, 'Pointing');

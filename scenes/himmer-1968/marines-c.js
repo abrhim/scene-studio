@@ -151,6 +151,7 @@
 
     // ---------- calibration on a probe figure (not in the scene) ----------
     const VNAT = {};
+    const LBF = 'Laying Breathless (after fall)';
     let RELEASE = 1.0, HEAD_LAY = { x: 0, z: -1 };
     {
       const F = V3.make(1, 'rifleman', 0, mat);
@@ -190,6 +191,9 @@
       f.b['mixamorigHead'].getWorldPosition(p); f.b['mixamorigHips'].getWorldPosition(q);
       const hx = p.x - q.x, hz = p.z - q.z, hl = Math.hypot(hx, hz) || 1;
       HEAD_LAY = { x: hx / hl, z: hz / hl, len: hl, hipX: q.x, hipZ: q.z };
+      // after a fall (Dying (1) ends face down, head ahead) the wounded roll onto their backs where they fell: Laying
+      // Breathless turned half round onto the fall's hips (clay-v3/motion.js CM.turned; the plain crossfade stood them up)
+      (CM.turned && CM.turned(f, 'Laying Breathless', LBF, 'Dying (1)', DUR('Dying (1)'))) || (CM.clips[LBF] = CM.clips['Laying Breathless']);
       F.mesh.geometry.dispose();
     }
     const headYaw = Math.atan2(HEAD_LAY.x, HEAD_LAY.z);   // the head's bearing from the hips in figure space
@@ -576,7 +580,7 @@
         p.hold(3, CROUCH(key)).go('Rifle Crouch Walk', [key === 'himmer' ? AS(-12, 8) : AS(-13, 6.8)], 1.1, { until: 13.6 }).hold(14.4, CROUCH(key), { face: up6 });
         if (key === 'himmer') {
           p.go('Rifle Run', [RUSH.himmer], 1.6, { until: 19.3 }).hold(FALL.himmer, 'Idle Crouching', { face: HIM_YAW, turn: 1.5 })
-            .hold(FALL.himmer + 3.2, 'Dying (1)', { fade: 0.35 }).hold(L, 'Laying Breathless', { fade: 1.4, lie: true });
+            .hold(FALL.himmer + 3.2, 'Dying (1)', { fade: 0.35 }).hold(L, LBF, { fade: 1.4, lie: true });
         } else {
           const nearH = AS(-2.6, 8.6), con = AS(-10.8, 2.8);
           p.go('Rifle Run', [nearH], 1.6, { until: 19.7 }).hold(20.6, 'Crouch Idle 02 Looking Around', { face: xz(S.secondPosition) })
@@ -598,7 +602,7 @@
         p = new Plan(a0, yawTo(a0[0], a0[1], up6[0], up6[1]));
         p.hold(2.5, KNEEL(key)).go('Rifle Crouch Walk', [mid], 1.0, { until: 13.2 }).hold(14.2 + H(p1i, 3) * 0.6, KNEEL(key), { face: up6 });
         p.go('Rifle Run', [RUSH[key] || AS(1, sd)], 1.7, { until: 19.6 }).hold(FALL[key] || 21.4 + H(p1i, 5), CROUCH(key), { face: xz(S.secondPosition) });
-        if (FALL[key]) p.hold(FALL[key] + 3.2, 'Dying (1)', { fade: 0.35 }).hold(L, 'Laying Breathless', { fade: 1.4, lie: true });
+        if (FALL[key]) p.hold(FALL[key] + 3.2, 'Dying (1)', { fade: 0.35 }).hold(L, LBF, { fade: 1.4, lie: true });
         else {
           const j = SIX.indexOf(key), c = inCrater(sixC, j, 6, 2.1);
           p.go('Rifle Run', [c], 2.0).hold(L, j % 2 ? 'Crouch Idle 02 Looking Around' : 'Idle Crouching', { face: xz(S.secondPosition), fade: 0.6 });
@@ -617,7 +621,7 @@
           // PFC Brown, killed (DU): a gentle fall, then still: the fall's last frame held, no breath (seg.still)
           p.hold(FALL[key] + DUR('Dying (1)') - 0.05, 'Dying (1)', { fade: 0.35 }).hold(L, 'Dying (1)', DEAD);
         } else if (FALL[key]) {
-          p.hold(FALL[key] + 3.2, 'Dying (1)', { fade: 0.35 }).hold(L, 'Laying Breathless', { fade: 1.4, lie: true });
+          p.hold(FALL[key] + 3.2, 'Dying (1)', { fade: 0.35 }).hold(L, LBF, { fade: 1.4, lie: true });
         } else if (key === 'hunnicutt') {
           const pc2 = AS(-19, 18), by = AS(-18.0, 17.0);
           p.hold(24, 'Prone Idle', { face: xz(S.secondPosition), fade: 0.7 }).go('Rifle Crouch Walk', [by], 1.0, { until: 26.2 }).hold(28.6, 'Kneeling Down', { face: pc2, fade: 0.4 })
@@ -762,7 +766,7 @@
           p.flinch.push(50.5);
           fireAt(p, k, 40, 49, 4, nearSlits[0] || second);
         } else if (k === 'hatcher') {
-          p.hold(31.3, 'Rifle Kneel Idle').hold(34.5, 'Dying (1)', { fade: 0.35 }).hold(L, 'Laying Breathless', { fade: 1.4, lie: true });
+          p.hold(31.3, 'Rifle Kneel Idle').hold(34.5, 'Dying (1)', { fade: 0.35 }).hold(L, LBF, { fade: 1.4, lie: true });
           p.flinch.push(31.2);
           fireAt(p, k, 4, 30, 10, nearSlits[1] || second);
         } else if (k === 'corpsman') {
@@ -925,6 +929,8 @@
       pU.end(L);
       pU.alphaFn = (tt) => 1 - sm((tt - 72.5) / 3.2);
       pU.glances.push({ t0: t + 0.5, t1: t + 3.4, x: coverP[0], z: coverP[1] });
+      // (crawl-fix pass) one drag: the crowd separation does not push Hunnicutt off the man he is moving
+      pH.group = pU.group = 'drag10';
       plans.himmer = pH.end(L); plans.hunnicutt = pU; plans.panykaninec = panyPlan(L);
       for (const k in KILLED) plans[k] = deadPlan(k, L);
       return plans;
@@ -1172,7 +1178,7 @@
         {
           const st = o.crowd || (o.crowd = { ox: 0, oz: 0 });
           if (jumped) st.ox = st.oz = 0;
-          const mov = seg.k === 'move' && !seg.carried, grp = p.lit || null, vx = Math.sin(E.yaw), vz = Math.cos(E.yaw);
+          const mov = seg.k === 'move' && !seg.carried, grp = p.lit || p.group || null, vx = Math.sin(E.yaw), vz = Math.cos(E.yaw);
           if (mov && CM.crowdOffset) CM.crowdOffset(tAbs, dt, 'c' + o.key, E.x, E.z, vx, vz, grp, st);
           if (CM.crowdAdd) CM.crowdAdd(tAbs, 'c' + o.key, E.x + st.ox, E.z + st.oz, seg.lie || seg.down || seg.carried ? 0.9 : 0.4, mov, mov ? vx : 0, mov ? vz : 0, grp);
           E.x += st.ox; E.z += st.oz;

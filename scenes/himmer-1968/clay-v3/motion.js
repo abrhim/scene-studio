@@ -480,7 +480,7 @@
         else f.gStill = null;
       }
       if (w.plant > 0 && !f.o.pinned) footLock(f, w.plant);
-    } else { f.gq = null; f.lieK = 0; }
+    } else { f.gq = null; f.gP = null; f.lieK = 0; }
 
     // 3. head and eyes, and 8. the face
     if (on('look')) look(f, dt, t);
@@ -585,7 +585,10 @@
     let tx = st.ox + px * 2.5, tz = st.oz + pz * 2.5;
     if (px === 0 && pz === 0) { const f = 1 - Math.min(1, dt * 1.2); tx = st.ox * f; tz = st.oz * f; }
     const m = Math.hypot(tx, tz); if (m > 1.4) { tx *= 1.4 / m; tz *= 1.4 / m; }
-    st.ox += (tx - st.ox) * k; st.oz += (tz - st.oz) * k;
+    // (crawl-fix pass) at most 0.8 m/s sideways: a lying man who starts to crawl beside another was kicked 0.7 m in a frame
+    let ddx = (tx - st.ox) * k, ddz = (tz - st.oz) * k; const dm = Math.hypot(ddx, ddz), cap = 0.8 * dt;
+    if (dm > cap) { ddx *= cap / dm; ddz *= cap / dm; }
+    st.ox += ddx; st.oz += ddz;
     return st;
   };
   CM.route = (f, pts, o) => { f.route = { pts, i: 0, stop: (o && o.stop) || 'Rifle Idle', turn: (o && o.turn) || 1.2 }; };
@@ -612,6 +615,36 @@
     const k = c.clone(); k.name = name;
     k.userData = Object.assign({}, c.userData, { name, rifle: undefined, cfg: Object.assign({}, c.userData.cfg, { rifle: 'sling' }) });
     clips[name] = k; return k;
+  };
+  // CM.turned(f, src, name, after, afterT, { noShift }) (crawl-fix pass): a copy of a lying clip turned half round about the vertical
+  // and moved so its hips lie where clip `after` leaves them at afterT. Laying Breathless lies face up with the head at -z;
+  // the falls (Dying (1), Dying (2)) end face down with the head at +z: a crossfade between them turned the hips 180
+  // degrees about the side axis and stood the man up for a second mid-blend (Abram: "jumping around like crazy"). From
+  // the turned copy the blend is a roll about the body's long axis: he rolls onto his back where he fell.
+  CM.turned = function (f, src, name, after, afterT, o) {
+    if (clips[name]) return clips[name];
+    const c = clips[src]; if (!c || !clips[after]) return null;
+    const hips = f.b[MB('Hips')], root = f.F.root;
+    const pose = (clip, t) => { f.mixer.stopAllAction(); f.cur = null; f.x = 0; f.z = 0; f.yaw = 0; CM.play(f, clip, { fade: 0, time: t }); for (let i = 0; i < 3; i++) CM.update(f, 1 / 30, i / 30); root.updateMatrixWorld(true); };
+    const noG = f.o.noGround; f.o.noGround = true;
+    pose(after, Math.min(afterT, clips[after].duration - 0.02));
+    const hA = wpos(hips, V(0, 0, 0)).applyMatrix4(_m1.copy(root.matrixWorld).invert());
+    pose(src, 0.4);
+    const hS = wpos(hips, V(0, 0, 0)).applyMatrix4(_m1.copy(root.matrixWorld).invert());
+    f.o.noGround = noG;
+    // the hips' parent in root space: M (position), Pq (rotation)
+    const M = _m1.copy(root.matrixWorld).invert().multiply(hips.parent.matrixWorld), Mi = M.clone().invert();
+    const Pq = new THREE.Quaternion(), Ps = V(0, 0, 0), Pt = V(0, 0, 0); M.decompose(Pt, Pq, Ps);
+    const R = new THREE.Quaternion().setFromAxisAngle(UP, Math.PI);
+    const L = Pq.clone().invert().multiply(R).multiply(Pq);   // R in the parent's frame
+    const sh = o && o.noShift ? V(0, 0, 0) : V(hA.x, 0, hA.z).sub(hS.clone().applyQuaternion(R).setY(0));   // noShift: the caller moves the root to the fall's hips itself
+    const k = c.clone(); k.name = name; k.userData = Object.assign({}, c.userData, { name });
+    k.tracks = k.tracks.map((tr) => {
+      if (tr.name === MX + 'Hips.quaternion') { const v = tr.values.slice(), q = new THREE.Quaternion(); for (let i = 0; i < v.length; i += 4) { q.fromArray(v, i).premultiply(L).toArray(v, i); } return new THREE.QuaternionKeyframeTrack(tr.name, tr.times.slice(), v); }
+      if (tr.name === MX + 'Hips.position') { const v = tr.values.slice(), p = V(0, 0, 0); for (let i = 0; i < v.length; i += 3) { p.fromArray(v, i).applyMatrix4(M).applyQuaternion(R).add(sh).applyMatrix4(Mi).toArray(v, i); } return new THREE.VectorKeyframeTrack(tr.name, tr.times.slice(), v); }
+      return tr;
+    });
+    clips[name] = k; f.mixer.stopAllAction(); f.cur = null; return k;
   };
   const G_ = { t: V(0, 0, 0), pole: V(0, 0, 0), s: V(0, 0, 0), h: V(0, 0, 0), side: V(0, 0, 0), q: new THREE.Quaternion() };
   CM.grip = function (f, tL, tR, o) {
@@ -714,8 +747,35 @@
     }
     return { h0: a[0][3] / a[0][0], gx: a[1][3] / a[1][1], gz: a[2][3] / a[2][2] };
   }
+  // the eased pitch and roll (f.gP) toward the plane (gx, gz) scaled by k, and the world tilt f.gq they make with f.yaw
+  const TILT_MAX = 35 * Math.PI / 180, TILT_MAX_STILL = 50 * Math.PI / 180, TILT_W = 12, TILT_V = 30 * Math.PI / 180, _eT = new THREE.Euler(), _qYw = new THREE.Quaternion();
+  function tiltStep(f, gx, gz, k, dt, jump, still) {
+    const sy = Math.sin(f.yaw), cy = Math.cos(f.yaw);
+    const sF = gx * sy + gz * cy;                       // rise along the heading
+    const th = -Math.atan(sF);                          // pitch (nose up on a rise)
+    // roll: the side axis X = n x F, F the heading lifted onto the plane
+    const Fx = sy, Fy = sF, Fz = cy, nx = -gx, ny = 1, nz = -gz;
+    const Xy = nz * Fx - nx * Fz, nX = Math.hypot(ny * Fz - nz * Fy, Xy, nx * Fy - ny * Fx) || 1;
+    const ph = Math.asin(clamp(Xy / nX / Math.max(0.2, Math.cos(th)), -1, 1));
+    // 35 degrees for a moving man; a man kneeling or lying still on the 47-degree south slope needs more (at 35 his toes
+    // stood 20 cm off it)
+    const TM = still ? TILT_MAX_STILL : TILT_MAX, tp = clamp(th, -TM, TM) * k, tr = clamp(ph, -TM, TM) * k;
+    const G = f.gP || (f.gP = jump ? { p: tp, r: tr, vp: 0, vr: 0 } : { p: 0, r: 0, vp: 0, vr: 0 });   // from upright, unless a new view
+    if (jump || !(dt > 0)) { G.p = tp; G.r = tr; G.vp = G.vr = 0; }
+    else {
+      const n = Math.max(1, Math.ceil(dt / 0.017)), h = dt / n;
+      for (let i = 0; i < n; i++) {
+        G.vp = clamp(G.vp + (TILT_W * TILT_W * (tp - G.p) - 2 * TILT_W * G.vp) * h, -TILT_V, TILT_V); G.p += G.vp * h;
+        G.vr = clamp(G.vr + (TILT_W * TILT_W * (tr - G.r) - 2 * TILT_W * G.vr) * h, -TILT_V, TILT_V); G.r += G.vr * h;
+      }
+    }
+    _eT.set(G.p, f.yaw, G.r, 'YXZ');
+    f.gq = (f.gq || new THREE.Quaternion()).setFromEuler(_eT).multiply(_qYw.setFromAxisAngle(UP, -f.yaw));
+    f.gJump = false;
+  }
   function groundPose(f, w, dt) {
-    const b = f.b, root = f.F.root, sc = f.scale, g = f.ground, jump = !!f.gJump;
+    // (a plug-in's hard reset clears f.lift: a new view or a cut, so the tilt is set at once, not eased in)
+    const b = f.b, root = f.F.root, sc = f.scale, g = f.ground, jump = !!f.gJump || f.lift === undefined;
     const nP = PROBES.length;
     // how far he is lying (the hips-to-head line from vertical) and kneeling (a kneeling clip, hips low over the contacts)
     wpos(b[MB('Hips')], GP.h); wpos(b[MB('Head')], GP.hd);
@@ -737,38 +797,41 @@
     const cont = GP.cont; cont.length = 0; let cx = 0, cz = 0, cy = 0;
     for (let i = 0; i < nP; i++) { GP.ci[i] = 0; if (GP.ly[i] - lmin < 0.04) { cont.push(i); GP.ci[i] = 1; cx += GP.p[i].x; cz += GP.p[i].z; cy += GP.p[i].y; } }
     cx /= cont.length; cz /= cont.length; cy /= cont.length;
-    // the body's long axis (hips to head when lying, else the heading), horizontal
-    if (lieK > 0.3) GP.ax.set(GP.t.x, 0, GP.t.z); else GP.ax.set(Math.sin(f.yaw), 0, Math.cos(f.yaw));
-    if (GP.ax.lengthSq() < 1e-6) GP.ax.set(Math.sin(f.yaw), 0, Math.cos(f.yaw));
-    GP.ax.normalize();
-    // the plane (cached for a man who has not moved, refreshed every 0.4 s, never for the still dead)
+    // (crawl-fix pass, Abram: "models crawling backwards, jumping around like crazy") The conform is a pure pitch and roll
+    // in the man's own heading frame, about his hips: yaw never comes from it (f.yaw is the route's), the hips do not move
+    // sideways (only the lift below changes his height). The plane is fitted to the pose's contacts and points along the
+    // heading (a moving man) or the body (a man lying still); cached until he moves 0.1 m (moving) or 0.3 m (still) or turns. Pitch and roll are clamped to 35 degrees (50 still), scaled by how
+    // far he is down, and eased by a critically damped filter (about 0.25 s, at most 30 deg/s), so a fall or a kneel
+    // blends in over its clip and a crawl does not jitter.
+    const mv = f.gPrev ? Math.hypot(f.sx - f.gPrev.x, f.sz - f.gPrev.z) > 0.002 : false;
+    f.gPrev = f.gPrev || { x: 0, z: 0 }; f.gPrev.x = f.sx; f.gPrev.z = f.sz;
     const C = f.gc;
-    const stale = !C || Math.hypot(C.x - f.sx, C.z - f.sz) > 0.03 || Math.abs(C.yaw - f.yaw) > 0.03 || Math.abs(C.lie - lieK) > 0.15 || (!f.raw && f.t - C.t > 0.4) || f.t < C.t;
+    const stale = !C || C.stand || Math.hypot(C.x - f.sx, C.z - f.sz) > (mv ? 0.1 : 0.3) || Math.abs(Math.atan2(Math.sin(C.yaw - f.yaw), Math.cos(C.yaw - f.yaw))) > 0.15 || f.t < C.t;
     if (stale) {
+      if (!mv && lieK > 0.5) GP.ax.set(GP.t.x, 0, GP.t.z); else GP.ax.set(Math.sin(f.yaw), 0, Math.cos(f.yaw));
+      if (GP.ax.lengthSq() < 1e-6) GP.ax.set(Math.sin(f.yaw), 0, Math.cos(f.yaw));
+      GP.ax.normalize();
+      // (the pose's contacts and four points on the axes, as fitted before; only the cache and the turn changed)
       let Lh = 0.4; for (const i of cont) Lh = Math.max(Lh, Math.abs((GP.p[i].x - cx) * GP.ax.x + (GP.p[i].z - cz) * GP.ax.z));
       const pts = GP.pts; pts.length = 0; for (const i of cont) pts.push(GP.p[i]);
       const P = fitPlane(f, pts, pts.length, cx, cz, GP.ax, Math.min(1.0, Lh));
-      f.gc = { x: f.sx, z: f.sz, yaw: f.yaw, lie: lieK, t: f.t, gx: P ? P.gx : 0, gz: P ? P.gz : 0 };
+      f.gc = { x: f.sx, z: f.sz, yaw: f.yaw, t: f.t, gx: P ? P.gx : 0, gz: P ? P.gz : 0 };
       CM.gstat.fits++;
     }
     const gx = f.gc.gx, gz = f.gc.gz;
     GP.n.set(-gx, 1, -gz).normalize();
-    // the tilt, eased (a new view or a jump of the root snaps it)
-    GP.qT.setFromUnitVectors(UP, GP.n);
-    GP.q.identity().slerp(GP.qT, tiltK);
-    if (!f.gq || f.gJump) { f.gq = (f.gq || new THREE.Quaternion()).copy(GP.q); f.gJump = false; }
-    else f.gq.slerp(GP.q, 1 - Math.exp(-dt / 0.15));
-    // (no matrix update until the end: the probes are carried along by the same rigid turns, which is exact)
+    tiltStep(f, gx, gz, tiltK, dt, jump, !mv);
+    // pivot: the hips (they do not move sideways with the contacts that touch from frame to frame); the probes are
+    // carried along by the same rigid turn
+    GP.c.copy(GP.h);
     if (f.gq.w < 0.99999) {
-      // turn the body about the contacts' centre
-      GP.c.set(cx, cy, cz);
       root.position.sub(GP.c).applyQuaternion(f.gq).add(GP.c);
       root.quaternion.premultiply(f.gq);
       for (let i = 0; i < nP; i++) GP.p[i].sub(GP.c).applyQuaternion(f.gq).add(GP.c);
       // a kneeling man: the torso back upright from the waist (Spine turned by qY in world, about its own joint)
       if (kneelK > 0.01) {
         const sp = b[MB('Spine')];
-        GP.q.copy(f.gq).invert(); GP.qY.identity().slerp(GP.q, kneelK / Math.max(1e-3, tiltK));
+        GP.q.copy(f.gq).invert(); GP.qY.identity().slerp(GP.q, Math.min(1, kneelK / Math.max(1e-3, tiltK)));
         wquat(b[MB('Hips')], _q1); wquat(sp, _q2);
         // local = (gq hips)^-1 qY gq spine
         _q3.copy(f.gq).multiply(_q1).invert().multiply(GP.qY).multiply(f.gq).multiply(_q2); sp.quaternion.copy(_q3);
@@ -819,12 +882,18 @@
   function standOnGround(f, dt, jump, lieK) {
     const b = f.b, root = f.F.root, sc = f.scale, g = f.ground;
     f.lieK = lieK;
-    if (f.gq) { f.gq = null; }
+    // a man getting up: the tilt he had on the ground eases out (the same filter), about the hips, then is dropped
+    if (f.gP && !jump && (Math.abs(f.gP.p) > 0.002 || Math.abs(f.gP.r) > 0.002 || Math.abs(f.gP.vp) > 0.002 || Math.abs(f.gP.vr) > 0.002)) {
+      tiltStep(f, 0, 0, 0, dt, false);
+      const H = wpos(b[MB('Hips')], GP.c);
+      root.position.sub(H).applyQuaternion(f.gq).add(H); root.quaternion.premultiply(f.gq); root.updateMatrixWorld(true);
+    } else { f.gq = null; f.gP = null; }
+    if (f.gc && !f.gc.stand) f.gc = null;
     if (!f.o.noGround) {
       const C = f.gc;
       if (!C || Math.hypot(C.x - f.sx, C.z - f.sz) > 0.15 || f.t - C.t > 1 || f.t < C.t) {
         const e = 0.5, x = f.sx, z = f.sz;
-        f.gc = { x, z, yaw: f.yaw, lie: lieK, t: f.t, gx: (g(x + e, z) - g(x - e, z)) / (2 * e), gz: (g(x, z + e) - g(x, z - e)) / (2 * e) };
+        f.gc = { stand: true, x, z, yaw: f.yaw, lie: lieK, t: f.t, gx: (g(x + e, z) - g(x - e, z)) / (2 * e), gz: (g(x, z + e) - g(x, z - e)) / (2 * e) };
         CM.gstat.fits++;
       }
       const rise = f.gc.gx * Math.sin(f.yaw) + f.gc.gz * Math.cos(f.yaw);
@@ -848,7 +917,7 @@
     const root = f.F.root, o = f.rootOff;
     if (!o) { root.position.set(f.x, f.ground(f.x, f.z) + (f.lift || 0) + (extraY || 0), f.z); root.rotation.set(0, f.yaw, 0); return; }
     root.position.set(f.x + o.x, f.ground(f.x, f.z) + o.y + (extraY || 0), f.z + o.z);
-    root.quaternion.setFromAxisAngle(UP, f.yaw); if (f.gq) root.quaternion.premultiply(f.gq);
+    if (f.gq && f.gP) root.quaternion.setFromEuler(_eT.set(f.gP.p, f.yaw, f.gP.r, 'YXZ')); else root.quaternion.setFromAxisAngle(UP, f.yaw);   // the last conform held, not re-applied as a delta
   };
   // the yaw that lays a man head uphill: headYaw is the head's bearing from the hips in figure space (yaw 0)
   CM.uphillYaw = function (ground, x, z, headYaw) {
