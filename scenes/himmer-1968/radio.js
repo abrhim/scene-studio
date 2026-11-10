@@ -35,6 +35,8 @@
       const { THREE, SITE } = ctx;
       const radio = this;
       window.radio = radio;
+      // sound hooks (sound.js drains these each tick): a hop lighting, a call going quiet; positions in world space
+      radio.sfx = [];
       const V = () => new THREE.Vector3();
       const clamp01 = (x) => Math.min(1, Math.max(0, x));
       const sm = ctx.smooth01;
@@ -427,10 +429,12 @@
           if (e.partial) out = 1 - sm((t - (e.t0 + 3.6)) / 1.0);
           else if (endHold) out = 1 - sm((t - (L - 1.3)) / 1.0);
           else out = 1 - sm((t - e.tEnd) / 1.0);
-          if (out <= 0) continue;
+          if (out <= 0) { if (e.sfxOpen) { e.sfxOpen = false; radio.sfx.push({ kind: 'close', t: tAbs, p: e.p[e.nL].clone() }); } continue; }
+          if (!e.sfxK || t < e.starts[0] - 0.01) e.sfxK = new Array(e.nL).fill(false);
           for (let k = 0; k < e.nL; k++) {
             const ts = e.starts[k];
-            if (t < ts) break;
+            if (t < ts) { e.sfxK[k] = false; break; }
+            if (!e.sfxK[k] && ts > -100) { e.sfxK[k] = true; e.sfxOpen = true; radio.sfx.push({ kind: 'open', t: tAbs, p: e.p[k].clone(), q: e.p[k + 1].clone() }); if (radio.sfx.length > 40) radio.sfx.shift(); }
             const inA = ts < -100 ? sm(t / 0.5) : sm((t - ts) / 0.5);
             const a = Math.min(inA, out);
             if (a <= 0.001) continue;

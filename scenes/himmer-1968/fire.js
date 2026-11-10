@@ -47,6 +47,10 @@
   const noop = () => {};
   // stubs until init runs (?only= may leave the plug-in out)
   Object.assign(FIRE, { burst: noop, blast: noop, smoke: noop, flash: noop, rebuild: noop });
+  // sound hook: every round and blast that starts, as it starts (sound.js drains this each tick and plays a shot or a
+  // blast for each, by weapon and distance): { kind: 'round', x, y, z, side (1 = nva), src } or { kind: 'blast', x, y, z, blast, size }
+  FIRE.sfx = [];
+  let sfxPrev = null;
 
   window.Scene.register({
     name: 'fire',
@@ -627,6 +631,12 @@
         for (const c of cand) c.s = 0;
         // rounds alive now, and those from the end of the previous loop
         const R = TL.rounds;
+        { // the rounds and blasts that start this frame (a new loop starts at -1: everything from 0 to t)
+          const q = FIRE.sfx, t0 = sfxPrev === null || sfxPrev > t ? -1 : sfxPrev;
+          for (let i = lower(R, t0 + 1e-6); i < R.length && R[i].t <= t; i++) if (R[i].t > t0) q.push({ kind: 'round', x: R[i].ax, y: R[i].ay, z: R[i].az, side: R[i].side, src: R[i].src });
+          for (const b of TL.blasts) if (b.t > t0 && b.t <= t) q.push({ kind: 'blast', x: b.x, y: b.y, z: b.z, blast: b.kind, size: b.size });
+          sfxPrev = t; if (q.length > 240) q.splice(0, q.length - 240);
+        }
         for (let i = lower(R, t - ROUND_LIFE); i < R.length && R[i].t <= t; i++) drawRound(R[i], t - R[i].t);
         if (t < ROUND_LIFE) for (let i = lower(R, L + t - ROUND_LIFE); i < R.length; i++) drawRound(R[i], t + L - R[i].t);
         for (const b of TL.blasts) {
@@ -655,6 +665,7 @@
         for (let i = live.length - 1; i >= 0; i--) {
           const x = live[i], a = now - x.at;
           if (a > x.life) { live.splice(i, 1); continue; }
+          if (a >= 0 && !x.sfxd) { x.sfxd = true; if (x.round) FIRE.sfx.push({ kind: 'round', x: x.round.ax, y: x.round.ay, z: x.round.az, side: x.round.side, src: x.round.src }); else if (x.blast) FIRE.sfx.push({ kind: 'blast', x: x.blast.x, y: x.blast.y, z: x.blast.z, blast: x.blast.kind, size: x.blast.size }); }
           if (x.round) { if (a >= 0) drawRound(x.round, a); } else if (x.blast) { if (a >= 0) drawBlast(x.blast, a, L); } else if (x.em) drawEmitter(x.em, a, L);
         }
         T.g.instanceCount = nT; G.g.instanceCount = nG; PS.g.instanceCount = nP; puffs.visible = nP > 0;

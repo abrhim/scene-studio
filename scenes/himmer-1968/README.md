@@ -36,7 +36,14 @@ The sound layer (`sound.js`) plays six loops in `audio/`, cut and loudness-match
 - `dusk-cicadas`: "Angkor Wat Jungle cicada 3" by Automatchski, CC0, https://freesound.org/s/333438/
 - `night`: "Night Ambience, Cát Tiên, Vietnam (April 19, 2019)" by marc.om, CC0, https://freesound.org/s/806575/
 
-Held for the fighting, radio and helicopter layers (not yet used): "SEA_13 Vietnam, Cu Chi Tunnels Shooting Range" by aUREa, CC BY 4.0, https://freesound.org/s/398650/ (real AK-47, M16 and M60); "Distent gunshot" by CosmicEmbers, CC BY 3.0, https://freesound.org/s/387477/; "Distant Explosion" by isaac_arva, CC BY 4.0, https://freesound.org/s/612729/; "M224 Mortar Impact Distant 03" by Nanashi, CC BY 4.0, https://freesound.org/s/426167/; "UH-1 Huey Iroquois Helicopter" by OroborosNZ, CC BY 4.0, https://freesound.org/s/157722/; "BR_013" by kevp888, CC BY 4.0, https://freesound.org/s/440558/. The downloaded recordings live in `sources/audio/raw/` (not committed).
+Chatter, movement, the radio and the fighting, also in `audio/`:
+
+- `patrol-talk`, `work-talk`, `undergrowth`, `digging`, the mortar blasts (`blast-mortar-*`), the big blasts (`blast-big-*`, from the Hue air strike), the handset clicks and the radio noise: BBC Sound Effects archive, "Warfare: Vietnam" and related sets (07010142, 07010144, 07018138, 07018167, 07043201, 07010141, 07040146, 07040148, 07041174), used under the BBC's RemArc licence, which allows personal, educational and research use and not commercial use. Not Creative Commons: a reuser of this repository must check that licence for themselves.
+- `shot-m16-*`, `shot-ak-*`, `shot-m60-*`: single shots cut from "SEA_13 Vietnam, Cu Chi Tunnels Shooting Range" by aUREa, CC BY 4.0, https://freesound.org/s/398650/. The recording names AK-47, M16 and M60 but not which is which; the three groups were told apart by their sound (brightness and level) and the labels are an inference.
+- `blast-far-1..3`: "Distant Explosion" by isaac_arva, CC BY 4.0, https://freesound.org/s/612729/; `blast-far-4`: "M224 Mortar Impact Distant 03" by Nanashi, CC BY 4.0, https://freesound.org/s/426167/.
+- `squelch-static`: "Walkie Talkie radio static" by SEF7, CC0, https://freesound.org/s/701330/; `squelch-end`: "Walkie-talkie end of transmission" by LukaCafuka, CC0, https://freesound.org/s/760245/.
+
+Held and not yet used: "SEA_13 Vietnam, Cu Chi Tunnels Shooting Range" by aUREa, CC BY 4.0, https://freesound.org/s/398650/ (real AK-47, M16 and M60); "Distent gunshot" by CosmicEmbers, CC BY 3.0, https://freesound.org/s/387477/; "Distant Explosion" by isaac_arva, CC BY 4.0, https://freesound.org/s/612729/; "M224 Mortar Impact Distant 03" by Nanashi, CC BY 4.0, https://freesound.org/s/426167/; "UH-1 Huey Iroquois Helicopter" by OroborosNZ, CC BY 4.0, https://freesound.org/s/157722/; "BR_013" by kevp888, CC BY 4.0, https://freesound.org/s/440558/. The downloaded recordings live in `sources/audio/raw/` (not committed).
 
 ## Licences
 
