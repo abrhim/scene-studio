@@ -32,10 +32,10 @@
       { const q = params.get('markers'); if (q === '0') mode = 'off'; else if (MODES.includes(q)) mode = q; }
       const M = (window.MARKERS = { mode, tracks: [], positions: [], stats: {} });
 
-      const BLUE = new THREE.Color(0x3b78e0), RED = new THREE.Color(0xc8324a);
+      const BLUE = new THREE.Color(0x2f72ff), RED = new THREE.Color(0xc8324a);
 
       // ---------- a pool of polar discs in one mesh; per-vertex alpha and side, written per slot ----------
-      function pool(slots, rings, segs, soft, lift) {
+      function pool(slots, rings, segs, soft, lift, big) {
         const vps = 1 + rings * segs, n = slots * vps;
         const pos = new Float32Array(n * 3), fr = new Float32Array(n), al = new Float32Array(n), rd = new Float32Array(n), idx = [];
         const cs = new Float32Array(segs), sn = new Float32Array(segs);
@@ -71,6 +71,7 @@
             void main() {
               float f = vF;
               float k = ${soft};
+              if (vR < 0.5 && ${big ? 'true' : 'false'}) k = mix(1.0, 0.45, smoothstep(0.0, 0.8, f)) * (1.0 - smoothstep(0.88, 1.0, f)) + 0.7 * smoothstep(0.8, 0.9, f) * (1.0 - smoothstep(0.92, 1.0, f));
               gl_FragColor = vec4(mix(uBlue, uRed, step(0.5, vR)) * uDim, vA * k);
             }`,
           transparent: true, depthWrite: false, fog: false,
@@ -102,7 +103,7 @@
         D.hideFrom = (s0) => { for (let s = s0; s < slots; s++) D.put(s, 0, 0, 0, 0, 0); };
         return D;
       }
-      const big = pool(40, 7, 22, MAP ? '1.0 - smoothstep(0.72, 1.0, f)' : 'exp(-2.6 * f * f) * (1.0 - smoothstep(0.6, 1.0, f))', 0.35);
+      const big = pool(40, 7, 22, MAP ? '1.0 - smoothstep(0.72, 1.0, f)' : 'exp(-2.6 * f * f) * (1.0 - smoothstep(0.6, 1.0, f))', 0.35, true);
       const men = pool(200, 3, 12, 'exp(-2.2 * f * f) * (1.0 - smoothstep(0.35, 1.0, f))', 0.12);
 
       // ---------- the Marines ----------
@@ -242,7 +243,7 @@
               for (const T of tracks) if (T.live && !T.hit && T.g === c.g) { const d = Math.hypot(T.x - c.x, T.z - c.z); if (d < Math.max(30, T.r + 10) && d < bd) { bd = d; best = T; } }
               if (!best) { best = tracks.find((T) => !T.live && T.a <= 0.001); if (!best) continue; best.live = true; best.g = c.g; best.x = c.x; best.z = c.z; best.r = c.r + 3; best.a = 0; }
               best.hit = true; best.tx = c.x; best.tz = c.z; best.tr = Math.min(48, Math.max(6, c.r + 3));
-              best.ta = SUBJECT[ch] === c.g ? 0.28 : 0.18;
+              best.ta = SUBJECT[ch] === c.g ? 0.42 : 0.3;
             }
           }
           for (const T of tracks) {
