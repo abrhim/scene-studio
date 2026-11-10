@@ -115,7 +115,9 @@
         }
         const horseshoe = slits.filter((s) => !second.includes(s));
         const byN = horseshoe.slice().sort((a, b) => dist(a, S.northEnd) - dist(b, S.northEnd));
-        let north = byN.filter((s, i) => i < 2 || (i < 4 && dist(s, S.northEnd) < dist(byN[0], S.northEnd) * 1.12));
+        // the whole north-end horseshoe (works' 'north' group, 7 slits) fires on A: from the back and both arms
+        let north = horseshoe.filter((s) => /^north/.test(s.id));
+        if (!north.length) north = byN.filter((s, i) => i < 2 || (i < 4 && dist(s, S.northEnd) < dist(byN[0], S.northEnd) * 1.12));
         let nc = north.reduce((a, s) => ({ x: a.x + s.x / north.length, z: a.z + s.z / north.length }), { x: 0, z: 0 });
         let ua = flat(S.northEnd, nc);
         // A was pinned "at the fringe" of the bunkers at the north end (DY p. 313). If no slit stands within 30 m of
@@ -282,7 +284,8 @@
 
         if (id === 3) {
           const act = (t) => smooth((t - 11) / 5) * (1 - 0.4 * smooth((t - 80) / 15) - 0.6 * smooth((t - 100) / 14));
-          P.north.forEach((s, i) => stream(s, P.A, 11 + i * 1.5, 114, { act, src: 'slit:' + s.id }));
+          // the arms (north4-7) fire a little less than the back, so the volume stays near what it was
+          P.north.forEach((s, i) => { const arm = /^north[4-7]/.test(s.id); stream(s, P.A, 11 + i * 1.5, 114, { act: arm ? (t) => act(t) * 0.6 : act, src: 'slit:' + s.id }); });
           // A's answer is fired by A's men themselves (marines-a-d.js, FIRE.burst from each man's muzzle)
           for (const t of [38, 58, 81, 103]) if (rng() < R.mortar + 0.001) blast(t, near(pick(P.A), 5), 'mortar');
           ridgeSmoke(P.north[0], 14, 108);

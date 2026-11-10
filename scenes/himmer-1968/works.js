@@ -57,9 +57,13 @@
   {
     const toward = (from, to) => { const dx = to.x - from.x, dz = to.z - from.z, l = Math.hypot(dx, dz); return [dx / l, dz / l]; };
     const nd = toward(SITE.northEnd, SITE.alz);
-    [[-7, -1], [0, 2], [7, -1]].forEach(([u, w], i) => {
+    // the north end is a horseshoe open toward A (Q3 "horseshoe shaped", Q24 "mutually supporting"): the three across
+    // the back, and two arms of two that run forward on either side, turned inward so their fields cross A's ground.
+    // [u across (left negative), w forward toward A, id, turn inward in degrees]; the array runs round the arc for the trench
+    [[-24, 18, 4, 75], [-17, 8, 5, 50], [-7, -1, 1, 0], [0, 2, 2, 0], [7, -1, 3, 0], [17, 8, 6, -50], [24, 18, 7, -75]].forEach(([u, w, n, turn]) => {
       const x = SITE.northEnd.x - nd[1] * u + nd[0] * w, z = SITE.northEnd.z + nd[0] * u + nd[1] * w;
-      ridgeBunkers.push({ id: 'north' + (i + 1), group: 'north', x, z, dx: nd[0], dz: nd[1] });
+      const a = turn * Math.PI / 180, dx = nd[0] * Math.cos(a) - nd[1] * Math.sin(a), dz = nd[1] * Math.cos(a) + nd[0] * Math.sin(a);
+      ridgeBunkers.push({ id: 'north' + n, group: 'north', x, z, dx, dz });
     });
     const sd = toward(SITE.secondPosition, SITE.himmerFall);
     [[-6, 0], [0, 2.5], [6, 0]].forEach(([u, w], i) => {
