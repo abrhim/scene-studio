@@ -6,7 +6,7 @@ Open it: run `npm run serve` from the studio root and visit `http://localhost:87
 
 ## Live copy
 
-Deployed to Abram's personal Cloudflare account as a static-asset Worker: https://himmer-1968.abramhimmer.workers.dev (noindex; first deployed 2026-11-10 at 9bfad10). To redeploy, copy `index.html`, `dem.js`, `labels.js`, the plug-ins, `kit/*.js`, `clay-v3/*.js`, `sound.js`, `narration-script.js`, `realistic-spike/anim/*.fbx` and `realistic-spike/*.glb` into an empty folder with a `_headers` of `/*` → `X-Robots-Tag: noindex`, then from the studio root:
+Deployed to Abram's personal Cloudflare account as a static-asset Worker: https://himmer-1968.abramhimmer.workers.dev (noindex; first deployed 2026-11-10 at 9bfad10). To redeploy, copy `index.html`, `dem.js`, `labels.js`, the plug-ins, `kit/*.js`, `clay-v3/*.js`, `sound.js`, `audio/*.mp3`, `narration-script.js`, `realistic-spike/anim/*.fbx` and `realistic-spike/*.glb` into an empty folder with a `_headers` of `/*` → `X-Robots-Tag: noindex`, then from the studio root:
 
     npx wrangler deploy --assets <folder> --name himmer-1968 --compatibility-date 2026-11-10
 
@@ -24,6 +24,19 @@ Deployed to Abram's personal Cloudflare account as a static-asset Worker: https:
 ## Before it animates: the Mixamo clips
 
 The figures are driven by 33 animation clips from Adobe Mixamo, which Mixamo's terms do not allow us to redistribute as files, so they are **not in this repository** (`realistic-spike/anim/*.fbx` is gitignored). Without them the scene loads but the men do not move. To restore them: sign in to mixamo.com with your own Adobe account and download each clip named in `realistic-spike/anim/ANIM-LIST.md` as **FBX Binary, Without Skin, 30 fps, no keyframe reduction** (and `Rifle Walk` With Skin, as the skeleton reference) into `realistic-spike/anim/`. `realistic-spike/MIXAMO.md` has the steps.
+
+## Sound
+
+The sound layer (`sound.js`) plays six loops in `audio/`, cut and loudness-matched from field recordings on Freesound, which play by the scene's clock and gusts. They are the site's 128 kbps previews; the originals can replace them. Credits, as their licences ask:
+
+- `grass-wind`: "Dry grass rustling in the wind, in the desert of Chile" by felix.blume, CC0, https://freesound.org/s/146436/
+- `grass-gusts`: "Wind in dry tall grass bulrush type... Arivaca Road desert in Arizona" by felix.blume, CC0, https://freesound.org/s/666175/
+- `day-field`: "BR_017_VN_QuietFields" by kevp888 (Kevin Luce), CC BY 4.0, https://freesound.org/s/578503/
+- `cicadas`: "BR_016_VN_cicadas" by kevp888 (Kevin Luce), CC BY 4.0, https://freesound.org/s/440521/
+- `dusk-cicadas`: "Angkor Wat Jungle cicada 3" by Automatchski, CC0, https://freesound.org/s/333438/
+- `night`: "Night Ambience, Cát Tiên, Vietnam (April 19, 2019)" by marc.om, CC0, https://freesound.org/s/806575/
+
+Held for the fighting, radio and helicopter layers (not yet used): "SEA_13 Vietnam, Cu Chi Tunnels Shooting Range" by aUREa, CC BY 4.0, https://freesound.org/s/398650/ (real AK-47, M16 and M60); "Distent gunshot" by CosmicEmbers, CC BY 3.0, https://freesound.org/s/387477/; "Distant Explosion" by isaac_arva, CC BY 4.0, https://freesound.org/s/612729/; "M224 Mortar Impact Distant 03" by Nanashi, CC BY 4.0, https://freesound.org/s/426167/; "UH-1 Huey Iroquois Helicopter" by OroborosNZ, CC BY 4.0, https://freesound.org/s/157722/; "BR_013" by kevp888, CC BY 4.0, https://freesound.org/s/440558/. The downloaded recordings live in `sources/audio/raw/` (not committed).
 
 ## Licences
 

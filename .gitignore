@@ -8,3 +8,4 @@ scenes/himmer-1968/references/thumbs/
 scenes/himmer-1968/references/contact-sheet.html
 # scratch at any depth under a scene
 scenes/**/.scratch/
+scenes/himmer-1968/sources/audio/raw/
