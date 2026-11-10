@@ -1289,7 +1289,9 @@
     const b = f.b, Lk = f.look, r = f.rng, mv = f.mv;
     const walking = f.speed > 0.3;
     if (t >= Lk.next) { // a new fixation
-      const fx = mv.fix, dur = fx[0] + r() * (fx[1] - fx[0]), sc = mv.scan;
+      // (head pass, Abram: "everyone's heads are just banging and going everywhere") a still man holds each fixation
+      // half as long again, and his head takes less of the turn, slower (below)
+      const fx = mv.fix, dur = (fx[0] + r() * (fx[1] - fx[0])) * (walking ? 1 : 1.5), sc = mv.scan;
       const roll = r();
       if (roll < 0.2) { /* hold where he is looking */ }
       else if (walking && roll < 0.32) { Lk.ty = (r() - 0.5) * 0.2; Lk.tp = -0.4 - r() * 0.15; } // the footing
@@ -1303,9 +1305,17 @@
     if (Lk.micro && t >= Lk.micro) { Lk.ty += (r() - 0.5) * 0.06; Lk.tp += (r() - 0.5) * 0.04; Lk.micro = 0; }
     const sa = 1 - Math.exp(-dt / 0.035); Lk.gy += (Lk.ty - Lk.gy) * sa; Lk.gp += (Lk.tp - Lk.gp) * sa; // saccade
     Lk.buf.push([t, Lk.gy, Lk.gp]); while (Lk.buf.length > 2 && Lk.buf[1][0] <= t - 0.12) Lk.buf.shift();
-    const hyT = Lk.buf[0][1] * 0.8, hpT = Lk.buf[0][2] * 0.65 + mv.headDown, ww = 6.5; // the head takes most of the turn, 120 ms behind the eyes
-    Lk.vy += (ww * ww * (hyT - Lk.hy) - 2 * ww * Lk.vy) * dt; Lk.hy += Lk.vy * dt;
-    Lk.vp += (ww * ww * (hpT - Lk.hp) - 2 * ww * Lk.vp) * dt; Lk.hp += Lk.vp * dt;
+    const hyT = Lk.buf[0][1] * (walking ? 0.8 : 0.6), hpT = Lk.buf[0][2] * 0.65 + mv.headDown, ww = walking ? 6.5 : 4.5; // the head takes most of the turn, 120 ms behind the eyes
+    // the head spring, critically damped, sub-stepped to 1/90 s: stepped once per update it diverges at a step of 0.2 s
+    // or more, which far men get (they update every 2nd or 3rd frame, up to 0.25 s), and a diverged head spun at random
+    // every frame. Clamped as a belt: no glance beyond 75 degrees of yaw or 45 of pitch.
+    if (!(Number.isFinite(Lk.hy) && Number.isFinite(Lk.vy) && Number.isFinite(Lk.hp) && Number.isFinite(Lk.vp))) { Lk.hy = hyT; Lk.hp = hpT; Lk.vy = Lk.vp = 0; }
+    { const ns = Math.max(1, Math.ceil(dt * 90)), h = dt / ns;
+      for (let s2 = 0; s2 < ns; s2++) {
+        Lk.vy += (ww * ww * (hyT - Lk.hy) - 2 * ww * Lk.vy) * h; Lk.hy += Lk.vy * h;
+        Lk.vp += (ww * ww * (hpT - Lk.hp) - 2 * ww * Lk.vp) * h; Lk.hp += Lk.vp * h;
+      }
+      Lk.hy = clamp(Lk.hy, -1.3, 1.3); Lk.hp = clamp(Lk.hp, -0.8, 0.8); }
     // the nod: the head's pitch springs against the neck's vertical acceleration (follow-through on each footfall)
     // (measured in the root's frame and low-passed: taken in world space, the root's small per-frame steps came through
     // the second derivative as a frame-to-frame alternation that rocked the head and helmet)
