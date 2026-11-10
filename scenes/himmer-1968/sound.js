@@ -126,9 +126,9 @@
           const { d, pan } = from(ev.x, ev.y, ev.z);
           if (voices >= 28) { S.stats.dropped++; return; }
           const set = ev.side ? 'ak' : 'm16';
-          // level: full at 12 m, 1/4 at 60 m, about 1/13 at 300 m (never gone: a far shot is still a crack); brightness falls with distance
-          const gain = 0.38 * Math.pow(clamp(12 / d, 0.04, 1), 0.85) * (0.85 + Math.random() * 0.3);
-          const lp = 700 + 9000 * clamp(25 / d, 0.1, 1);
+          // level: full to 30 m, about 0.6 at 60 m, 0.2 at 300 m (never gone: a far shot is still a crack); brightness falls with distance
+          const gain = 0.7 * Math.pow(clamp(30 / d, 0.05, 1), 0.7) * (0.85 + Math.random() * 0.3);   // Abram, 2026-11-10: "the fighting sounds can be louder"; the chapter cameras sit 50-60 m off, so the fall-off starts at 30 m (was 0.38 at 12 m)
+          const lp = 900 + 9000 * clamp(40 / d, 0.1, 1);
           play(pick(set), { gain, lp, pan, delay: d / 340, rate: 0.96 + Math.random() * 0.08 });
           S.stats.shots++;
         }
@@ -136,8 +136,8 @@
           const { d, pan } = from(ev.x, ev.y, ev.z);
           const big = ev.blast === 'rocket' || ev.blast === 'arty';
           const set = big ? 'big' : ev.blast === 'grenade' ? 'mortar' : d < 90 ? 'mortar' : 'far';
-          const base = big ? 0.7 : ev.blast === 'grenade' ? 0.4 : 0.6;
-          const gain = base * Math.pow(clamp(30 / d, 0.08, 1), 0.7);
+          const base = big ? 1.0 : ev.blast === 'grenade' ? 0.6 : 0.9;
+          const gain = base * Math.pow(clamp(50 / d, 0.1, 1), 0.7);
           const lp = 500 + 7000 * clamp(40 / d, 0.12, 1);
           play(pick(set), { gain, lp, pan, delay: d / 340, rate: ev.blast === 'grenade' ? 1.15 : 0.95 + Math.random() * 0.1 });
           S.stats.blasts++;
