@@ -7,7 +7,7 @@
 // computed when this script loads, so it is there even under ?only= without works):
 //   works.slits   [{ id, group ('arc' | 'north' | 'second'), pos: Vector3 (slit mouth), dir: Vector3 (unit, level, outward) }]
 //   works.masts   { relay, base, army, cp }: Vector3 antenna tips (cp = the tallest CP antenna); masts.feet the same at ground
-//   works.spiderHoles [{ id, group ('crest' | 'lz'), pos }]   ('lz' = within 12 m of the CH-46's landing point)
+//   works.spiderHoles [{ id, group ('crest' | 'lz'), pos }]   ('lz' = 12-19 m from the CH-46's landing point)
 //   works.holes   [{ pos, out }]  689 fighting holes (out = outward unit vector);  works.cpTable { pos, rotY, w, d }
 //   works.lz      { czlz: [padA, padB], alz, lz689, ch46 }: touchdown points;  works.clearings [{ x, z, r, kind, from }]
 (function () {
@@ -90,7 +90,7 @@
     const L = WORKS.lz.ch46;
     let m = 0; tries = 0;
     while (m < 10 && tries++ < 2000) {
-      const a = rr(0, Math.PI * 2), r = rr(5, 12), x = L.x + Math.cos(a) * r, z = L.z + Math.sin(a) * r;
+      const a = rr(0, Math.PI * 2), r = rr(12, 19), x = L.x + Math.cos(a) * r, z = L.z + Math.sin(a) * r;   // clear of the rotor discs (7.6 m blades on hubs 5 m fore and aft)
       if (near(x, z, 3.5)) continue;
       WORKS.spiderHoles.push({ id: 'sh' + (n + ++m), group: 'lz', pos: V(x, G(x, z), z) });
     }

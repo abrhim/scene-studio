@@ -330,15 +330,21 @@
         want.add(f);
       }
       // ch 11: four men in holes round the LZ fire up at the CH-46
+      // The four holes and their lids are there all chapter (Abram, 2026-11-10: they must not vanish when the
+      // helicopter leaves); the lids hinge on the side away from the landing point, shut except in the firing window.
       if (me.up11) me.up11.fill(0);
-      if (id === 11 && T > me.H11.lidOpen - 0.8 && T < me.H11.lidShut + 1.2) {
+      if (id === 11) {
         const lz = ctx.SITE.routes.ch46[1];
+        const live = T > me.H11.lidOpen - 0.8 && T < me.H11.lidShut + 1.2;
         const heli = (window.FIRE && FIRE.ch46At) ? FIRE.ch46At(T) : { x: lz.x, y: lz.y + 3, z: lz.z };
         [0, 1, 2, 3].forEach((i) => {
           // the same four holes fire.js fires from (works.js's nvaHoles('lz')), so the flash is at this man's rifle
           const x = me.h11[i].x, z = me.h11[i].z;
           const f = POOL.hole[i], d0 = i * 0.4;
-          const open = sm((T - me.H11.lidOpen - d0 * 0.5) / 0.45) * (1 - sm((T - me.H11.lidShut - d0 * 0.3) / 0.5));
+          const open = live ? sm((T - me.H11.lidOpen - d0 * 0.5) / 0.45) * (1 - sm((T - me.H11.lidShut - d0 * 0.3) / 0.5)) : 0;
+          setLid(nl++, x, z, lz.x - x, lz.z - z, open);
+          me.holes.setMatrixAt(nh++, me.m4.makeTranslation(x, G(x, z) + 0.035, z));
+          if (!live) return;
           const up = sm((T - me.H11.rise - d0) / 0.5) * (1 - sm((T - me.H11.duck - d0 * 0.25) / 0.45));
           const hx = heli.x - x, hz = heli.z - z, hy = heli.y - G(x, z) - 1.2, hd = Math.hypot(hx, hz);
           f.x = x - (hx / (hd || 1)) * 0.25; f.z = z - (hz / (hd || 1)) * 0.25; f.yaw = Math.atan2(hx, hz);
@@ -348,8 +354,6 @@
           f.nva.aim.set(hx, Math.max(0, hy), hz).normalize(); f.nva.aimK = up; f.nva.maxTurn = 0.42;
           pose(f, 'Idle Crouching', 3 + T * 0.5, 'Rifle Idle', 1 + T * 0.6, up);
           want.add(f);
-          setLid(nl++, x, z, hx, hz, open);
-          me.holes.setMatrixAt(nh++, me.m4.makeTranslation(x, G(x, z) + 0.035, z));
           me.up11[i] = up;
         });
       }
