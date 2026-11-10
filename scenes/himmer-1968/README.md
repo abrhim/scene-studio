@@ -4,6 +4,14 @@ A living diorama of the relief attack by 1st Battalion, 9th Marines on a grass r
 
 Open it: run `npm run serve` from the studio root and visit `http://localhost:8790/scenes/himmer-1968/index.html`. Arrow keys change chapter; drag to orbit; tap a man, place or radio line for its label; the story panel's control switches the side markers (Off · Groups · Each man).
 
+## Live copy
+
+Deployed to Abram's personal Cloudflare account as a static-asset Worker: https://himmer-1968.abramhimmer.workers.dev (noindex; first deployed 2026-11-10 at 9bfad10). To redeploy, copy `index.html`, `dem.js`, `labels.js`, the plug-ins, `kit/*.js`, `clay-v3/*.js`, `realistic-spike/anim/*.fbx` and `realistic-spike/*.glb` into an empty folder with a `_headers` of `/*` → `X-Robots-Tag: noindex`, then from the studio root:
+
+    npx wrangler deploy --assets <folder> --name himmer-1968 --compatibility-date 2026-11-10
+
+(`wrangler whoami` must show the personal account.) The Mixamo clips are served as part of the scene, which Mixamo's terms allow for a project of your own; they are still not committed here.
+
 ## What is where
 
 - `DECISIONS.md`: every ruling, dated. Read it first.
