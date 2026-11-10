@@ -43,6 +43,9 @@ Chatter, movement, the radio and the fighting, also in `audio/`:
 - `blast-far-1..3`: "Distant Explosion" by isaac_arva, CC BY 4.0, https://freesound.org/s/612729/; `blast-far-4`: "M224 Mortar Impact Distant 03" by Nanashi, CC BY 4.0, https://freesound.org/s/426167/.
 - `squelch-static`: "Walkie Talkie radio static" by SEF7, CC0, https://freesound.org/s/701330/; `squelch-end`: "Walkie-talkie end of transmission" by LukaCafuka, CC0, https://freesound.org/s/760245/.
 
+- `strike-*`: rock and stick strikes on dirt by worthahep88, CC0, https://freesound.org/s/319222/, /319229/, /319214/; `rico-*`: ".22 ricochet" and "ricochet" by cedarstudios, CC0, https://freesound.org/s/148827/, /148840/; `crack-*`: the first milliseconds of the Cu Chi shots, high-passed (no recording of a passing bullet's crack exists on either site).
+- `heli-uh34`: "UH-1 Huey Iroquois Helicopter" by OroborosNZ, CC BY 4.0, https://freesound.org/s/157722/ (standing in for the UH-34D); `heli-ch46`: BBC 07025033, Sea King approach and landing (standing in for the CH-46A); `plane-o1`: BBC 07000127, Auster air observation post aircraft circling (standing in for the O-1).
+
 Held and not yet used: "SEA_13 Vietnam, Cu Chi Tunnels Shooting Range" by aUREa, CC BY 4.0, https://freesound.org/s/398650/ (real AK-47, M16 and M60); "Distent gunshot" by CosmicEmbers, CC BY 3.0, https://freesound.org/s/387477/; "Distant Explosion" by isaac_arva, CC BY 4.0, https://freesound.org/s/612729/; "M224 Mortar Impact Distant 03" by Nanashi, CC BY 4.0, https://freesound.org/s/426167/; "UH-1 Huey Iroquois Helicopter" by OroborosNZ, CC BY 4.0, https://freesound.org/s/157722/; "BR_013" by kevp888, CC BY 4.0, https://freesound.org/s/440558/. The downloaded recordings live in `sources/audio/raw/` (not committed).
 
 ## Licences

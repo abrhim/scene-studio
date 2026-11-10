@@ -19,6 +19,7 @@
 (function () {
   const LS = 'himmer1968.sound';
   const BEDS = ['grass-wind', 'grass-gusts', 'day-field', 'cicadas', 'dusk-cicadas', 'night', 'patrol-talk', 'work-talk', 'undergrowth', 'digging'];
+  const AIR = ['heli-uh34', 'heli-ch46', 'plane-o1'];   // positional loops: the two medevacs, the CH-46, the spotter plane
   const SETS = {
     m16: ['shot-m16-1', 'shot-m16-2', 'shot-m16-3', 'shot-m16-4', 'shot-m16-5', 'shot-m16-6'],
     ak: ['shot-ak-1', 'shot-ak-2', 'shot-ak-3', 'shot-ak-4', 'shot-ak-5', 'shot-ak-6'],
@@ -27,9 +28,12 @@
     far: ['blast-far-1', 'blast-far-2', 'blast-far-3', 'blast-far-4'],
     big: ['blast-big-1', 'blast-big-2', 'blast-big-3'],
     radio: ['handset-up', 'handset-down', 'squelch-end', 'squelch-static'],
+    strike: ['strike-1', 'strike-2', 'strike-3', 'strike-4', 'strike-5', 'strike-6'],
+    rico: ['rico-1', 'rico-2', 'rico-3', 'rico-4', 'rico-5', 'rico-6'],
+    crack: ['crack-1', 'crack-2', 'crack-3'],
   };
   const ONES = Object.values(SETS).flat();
-  const FILES = BEDS.concat(ONES);
+  const FILES = BEDS.concat(AIR, ONES);
   window.Scene.register({
     name: 'sound',
     init(ctx) {
@@ -74,6 +78,16 @@
           src.start(0, off);
           L[n] = { src, g };
         });
+        // aircraft: a loop each, placed where the aircraft is every tick (level, low-pass and pan by distance and direction)
+        const air = {};
+        for (const n of AIR) {
+          if (!bufs[n]) continue;
+          const src = ac.createBufferSource(); src.buffer = bufs[n]; src.loop = true;
+          const lp = ac.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 2000; lp.Q.value = 0.4;
+          const g = ac.createGain(); g.gain.value = 0; const pan = ac.createStereoPanner();
+          src.connect(lp); lp.connect(g); g.connect(pan); pan.connect(sfx); src.start(0, Math.random() * bufs[n].duration);
+          air[n] = { src, lp, g, pan, on: false };
+        }
         // chatter and movement by chapter (the men the chapter is with); 0 where nobody talks or moves in the open
         const TALK = { 1: { 'work-talk': 0.5, digging: 0.35 }, 2: { 'patrol-talk': 0.55, undergrowth: 0.5 }, 4: { 'work-talk': 0.35 }, 5: { 'patrol-talk': 0.45, undergrowth: 0.45 }, 8: { undergrowth: 0.3, 'patrol-talk': 0.12 }, 11: { 'work-talk': 0.3 } };
         let fade = 0;
@@ -98,6 +112,17 @@
           set('night', 0.85 * night * quietK, 1.2);
           const T = TALK[ch] || {};
           for (const n of ['patrol-talk', 'work-talk', 'undergrowth', 'digging']) set(n, T[n] || 0, 2.0);
+          // the aircraft: from medevac.js's positions; a rotor that turns on the ground is heard too, lower
+          const M = window.MEDEVAC;
+          if (M) {
+            const place = (n, pos, k) => { const a = air[n]; if (!a) return; if (!pos || k <= 0.001) { if (a.on) { ramp(a.g.gain, 0, 0.5); a.on = false; } return; }
+              const { d, pan } = from(pos.x, pos.y, pos.z); a.on = true;
+              ramp(a.g.gain, 1.1 * k * Math.pow(clamp(60 / d, 0.04, 1), 0.75), 0.3); ramp(a.lp.frequency, 600 + 7000 * clamp(80 / d, 0.1, 1), 0.3); ramp(a.pan.pan, pan, 0.3); };
+            const hel = (type) => { let best = null, bd = 1e9, kk = 0; for (const a of M.aircraft) if (a.type === type && a.visible && a.rotorOn) { const d = a.pos.distanceTo(ctx.camera.position); if (d < bd) { bd = d; best = a.pos; kk = a.pos.y - ctx.groundY(a.pos.x, a.pos.z) > 4 ? 1 : 0.6; } } return [best, kk]; };
+            const [u, uk] = hel('UH-34D'); place('heli-uh34', u, uk);
+            const [c, ck] = hel('CH-46A'); place('heli-ch46', c, ck);
+            const p = M.plane ? M.plane() : null; place('plane-o1', p, p ? 0.8 : 0);
+          }
           S.level = fade;
         }
         // ---------- one-shots: a sample placed in the world, heard from the camera ----------
@@ -122,8 +147,28 @@
           V.applyMatrix4(cam.matrixWorldInverse); const pan = clamp(V.x / (Math.hypot(V.x, V.z) || 1), -1, 1) * 0.8;
           return { d, pan };
         }
+        // the last time each source fired (the thinning below keeps every first round of a burst)
+        const lastBy = new Map();
+        const C = new THREE.Vector3(), A = new THREE.Vector3(), B = new THREE.Vector3();
         function shot(ev) {
           const { d, pan } = from(ev.x, ev.y, ev.z);
+          const now = ac.currentTime, prev = lastBy.get(ev.src) || -9; lastBy.set(ev.src, now);
+          const burstStart = now - prev > 0.5;
+          // the strike where the round lands (dirt; one in five a ricochet) and the crack when it passes within 12 m of the camera
+          if (ev.bx !== undefined) {
+            A.set(ev.x, ev.y, ev.z); B.set(ev.bx, ev.by, ev.bz); C.copy(cam.position);
+            const ab = B.clone().sub(A), len = ab.length() || 1, u = clamp(C.clone().sub(A).dot(ab) / (len * len), 0, 1);
+            const near = A.clone().addScaledVector(ab, u).distanceTo(C);
+            if (near < 12 && voices < 30) { play(pick('crack'), { gain: 0.5 * (1 - near / 12) + 0.15, lp: 12000, pan: 0, delay: (u * len) / 900 }); }
+            const far = from(ev.bx, ev.by, ev.bz);
+            if ((burstStart || Math.random() < 0.35) && voices < 30 && far.d < 160) {
+              const rico = Math.random() < 0.2;
+              play(pick(rico ? 'rico' : 'strike'), { gain: (rico ? 0.5 : 0.7) * Math.pow(clamp(24 / far.d, 0.05, 1), 0.75), lp: 800 + 8000 * clamp(30 / far.d, 0.1, 1), pan: far.pan, delay: ev.dur + far.d / 340, rate: 0.9 + Math.random() * 0.2 });
+            }
+          }
+          // thinning (Abram: the fight should have shape): the first round of every burst always sounds; the rest sound
+          // while the mix is not crowded, and from near sources, so a far burst is a crack and a reply, not a wash
+          if (!burstStart && (voices >= 16 || (d > 90 && Math.random() < 0.6))) { S.stats.dropped++; return; }
           if (voices >= 28) { S.stats.dropped++; return; }
           const set = ev.side ? 'ak' : 'm16';
           // level: full to 30 m, about 0.6 at 60 m, 0.2 at 300 m (never gone: a far shot is still a crack); brightness falls with distance

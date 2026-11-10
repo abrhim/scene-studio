@@ -496,11 +496,45 @@
         return onCircle(t, out);
       };
       const pTmp = V(0, 0, 0);
+      // ---------- the cue (Abram, 2026-11-10: "as the chopper comes in, put something like 'we should pan towards it'"):
+      // while an aircraft is airborne and out of the frame, a small gold chevron at the frame's edge points toward it,
+      // with its name; it goes when the aircraft is in frame, down with its rotor stopped, or gone ----------
+      const CUE = (() => {
+        const el = document.createElement('div'); el.id = 'aircue';
+        el.innerHTML = '<svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l7 9h-4v9h-6v-9H5z" fill="#f0d48a"/></svg><span></span>';
+        const css = document.createElement('style');
+        css.textContent = '#aircue{position:fixed;left:0;top:0;z-index:4;pointer-events:none;opacity:0;transition:opacity .4s ease;display:flex;flex-direction:column;align-items:center;gap:2px;transform:translate(-50%,-50%);filter:drop-shadow(0 1px 2px rgba(0,0,0,.6))}' +
+          '#aircue svg{transform-origin:50% 50%}#aircue span{font:700 11px/1 Georgia,serif;letter-spacing:.14em;text-transform:uppercase;color:#f0d48a;white-space:nowrap;text-shadow:0 1px 3px rgba(0,0,0,.8)}';
+        document.head.appendChild(css); document.body.appendChild(el);
+        return { el, svg: el.firstChild, label: el.lastChild, shown: false, name: '' };
+      })();
+      const cueV = V(0, 0, 0);
+      function cue() {
+        // the airborne aircraft nearest the camera: the two medevacs and the CH-46 while their rotors turn and they are off the ground, the plane while it shows
+        let best = null, bd = 1e9, name = '';
+        const G = (x, z) => ctx.groundY(x, z);
+        for (const a of OUT.aircraft) if (a.visible && a.rotorOn && a.pos.y - G(a.pos.x, a.pos.z) > 6) { const d = a.pos.distanceTo(ctx.camera.position); if (d < bd) { bd = d; best = a.pos; name = a.type === 'CH-46A' ? 'Helicopter' : 'Medevac'; } }
+        const pp = OUT.plane(); if (pp) { const d = pp.distanceTo(ctx.camera.position); if (d < bd) { bd = d; best = pp; name = 'Spotter plane'; } }
+        let show = false, x = 0, y = 0, ang = 0;
+        if (best) {
+          cueV.copy(best).project(ctx.camera);
+          const behind = cueV.z > 1, inFrame = !behind && Math.abs(cueV.x) < 0.92 && Math.abs(cueV.y) < 0.88;
+          if (!inFrame) {
+            // the direction to it on screen (behind the camera: flipped), pushed to the frame's edge with a margin
+            let dx = cueV.x, dy = cueV.y; if (behind) { dx = -dx; dy = -dy; }
+            const m = Math.max(Math.abs(dx) / 0.9, Math.abs(dy) / 0.84, 1e-6); dx /= m; dy /= m;
+            x = (dx + 1) * 0.5 * innerWidth; y = (1 - dy) * 0.5 * innerHeight; ang = Math.atan2(dx, dy) * 180 / Math.PI; show = true;
+          }
+        }
+        if (show) { CUE.el.style.transform = 'translate(' + x.toFixed(0) + 'px,' + y.toFixed(0) + 'px) translate(-50%,-50%)'; CUE.svg.style.transform = 'rotate(' + ang.toFixed(0) + 'deg)'; if (CUE.name !== name) { CUE.name = name; CUE.label.textContent = name; } }
+        if (show !== CUE.shown) { CUE.shown = show; CUE.el.style.opacity = show ? 1 : 0; }
+      }
       const _update = update;
       update = function () {
         _update();
         const t = ctx.cycle.t, on = ctx.chapter.id === 11 && t > PL.t0 && t < PL.t1;
         PLANE.g.visible = on;
+        cue();
         if (!on) return;
         planeAt(t, PLANE.pos); planeAt(t + 0.2, pTmp);
         PLANE.g.position.copy(PLANE.pos);
