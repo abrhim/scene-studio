@@ -112,7 +112,7 @@
           // wind
           { const W = L.wind; W.ph += dt * 0.07; const breath = 0.5 + 0.5 * Math.sin(W.ph * 6.28) * Math.cos(W.ph * 2.1);
             ramp(W.lp.frequency, 240 + 160 * breath + 520 * gust, 0.5);
-            ramp(W.g.gain, (0.11 + 0.06 * breath + 0.2 * gust) * quietK, 0.5); }
+            ramp(W.g.gain, (0.05 + 0.03 * breath + 0.1 * gust) * quietK, 0.5); /* halved: Abram, "the wind is like the ocean"; real recordings to come */ }
           // grass
           ramp(L.grass.g.gain, (0.01 + 0.09 * Math.pow(gust, 1.4)) * grassK * quietK, 0.25);
           // cicadas: each swells for 4-9 s, rests 3-8 s
@@ -120,7 +120,7 @@
             C.next -= dt;
             if (C.next <= 0) { C.on = !C.on; C.next = C.on ? 4 + R() * 5 : 3 + R() * 5; }
             C.k += ((C.on ? 1 : 0) - C.k) * Math.min(1, dt / (C.on ? 1.6 : 2.4));
-            ramp(C.g.gain, 0.28 * C.k * heat, 0.3); ramp(C.am.gain, 0.5, 0.3);
+            ramp(C.g.gain, 0.0 * C.k * heat, 0.3); /* off: Abram, "they sound like phones going off"; real recordings to come */ ramp(C.am.gain, 0.5, 0.3);
           }
           // crickets: trills of 0.4-0.9 s, pauses of 0.3-1.4 s
           for (const K of L.crickets) {
