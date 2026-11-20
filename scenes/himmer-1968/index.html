@@ -1641,9 +1641,13 @@
   const sunTmp = new THREE.Vector3();
   let last = performance.now(), fpsFrames = 0, fpsTime = 0, rafId = null, frameNo = 0, merged = false;
   const CAPTURE = params.has('capture');
+  // Real time draws at 30 frames a second (Abram, 2026-11-19); ?fps=60 lifts it. The loop still wakes on every display
+  // refresh and skips the ones that come early (1.5 ms of slack, so a 60 Hz display draws every second refresh).
+  const FRAME_MS = 1000 / (Number(params.get('fps')) || 30);
   function frame() {
     if (!CAPTURE) rafId = requestAnimationFrame(frame);
     const now = performance.now();
+    if (!CAPTURE && now - last < FRAME_MS - 1.5) return;
     const dt = CAPTURE ? 1 / 30 : Math.min((now - last) / 1000, 0.1);
     last = now;
     clock.elapsed += dt;
